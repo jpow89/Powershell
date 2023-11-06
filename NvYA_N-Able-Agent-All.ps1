@@ -12,13 +12,6 @@ Function Get-NamespaceAndTypes {
     }
 }
 
-<# Usage of the function
-$namespaceData = Get-NamespaceAndTypes
-$NWSNameSpace = $namespaceData.Namespace
-$KeyPairType = $namespaceData.KeyPairType
-$KeyValueType = $namespaceData.KeyValueType
-#>
-
 # Function to create a PSCredential object from given username and password
 Function Get-CredentialObject {
     param (
