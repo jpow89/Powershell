@@ -243,5 +243,3 @@ $customerList = Get-CustomerList -ServerHost $serverHost -Credentials $creds -Na
 # Set up the GUI
 Setup-GUI
 
-# Show the GUI dialog
-[void]$form1.ShowDialog()
