@@ -1,0 +1,10 @@
+Completing a failed IOCTL request.
+
+DeviceGUID = {e8b5d607-6dd8-3fa1-9c61-1039c0045ff4}
+DeviceNumber = 0
+Vendor = DELL
+Model = PERC H330 Adp
+FirmwareVersion = 4.30
+SerialNumber = 008085a50d3c54e925004a89c6f098cd
+IrpStatus = 0xc0000185
+IoctlControlCode = 0x74080
