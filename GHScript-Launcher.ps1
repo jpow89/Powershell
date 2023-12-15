@@ -1,3 +1,6 @@
+# Add this line at the beginning of your script to use TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 $repoUrl = "https://api.github.com/repos/jpow89/Powershell/contents/"
 
 # Use a WebClient to set the User-Agent header
