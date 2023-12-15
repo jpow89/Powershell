@@ -1,0 +1,3 @@
+$url = "https://raw.githubusercontent.com/jpow89/Powershell/main/VeeamCopytoExternal.ps1"
+$script = (Invoke-WebRequest -Uri $url).Content
+Invoke-Expression $script
