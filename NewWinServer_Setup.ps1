@@ -1,3 +1,5 @@
+Part 1: Function Definitions
+
 # Function to Validate IP Address
 function Validate-IPAddress {
     param (
@@ -11,7 +13,6 @@ function Validate-DNS {
     param (
         [string]$DNS
     )
-    # Simple validation, assuming DNS input is a single IP address
     return Validate-IPAddress -IPAddress $DNS
 }
 
@@ -23,19 +24,14 @@ function Configure-Network {
         [string]$Gateway,
         [string]$DNS
     )
-
-    # Validate IP Address
     if (-not (Validate-IPAddress -IPAddress $IPAddress)) {
         Write-Host "Invalid IP Address format."
         return
     }
-
-    # Validate DNS Address
     if (-not (Validate-DNS -DNS $DNS)) {
         Write-Host "Invalid DNS format."
         return
     }
-
     try {
         New-NetIPAddress -IPAddress $IPAddress -PrefixLength $SubnetMask -DefaultGateway $Gateway
         Set-DnsClientServerAddress -ServerAddresses $DNS
@@ -102,37 +98,6 @@ function Create-ExternalVSwitch {
     }
 }
 
-# Function to Join a Domain
-function Join-Domain {
-    param (
-        [PSCredential]$credential
-    )
-
-    # Prompt the user for the domain name
-    $DomainName = Read-Host -Prompt "Enter the domain name you wish to join"
-
-    # Check if the domain name is provided
-    if (-not $DomainName) {
-        Write-Host "Domain name is required."
-        return
-    }
-
-    try {
-        # Attempt to join the domain
-        Add-Computer -DomainName $DomainName -Credential $credential -Force -Verbose
-
-        # Confirm reboot
-        $rebootConfirmation = Read-Host "The computer has been successfully added to the domain '$DomainName'. A reboot is required to apply these changes. Would you like to reboot now? (Y/N)"
-        if ($rebootConfirmation -eq 'Y') {
-            Restart-Computer -Force
-        } else {
-            Write-Host "Please remember to manually reboot the computer to complete the domain joining process."
-        }
-    } catch {
-        Write-Error "Failed to join the domain: $_"
-    }
-}
-
 # Function to Install Domain Controller Role
 function Install-DomainControllerRole {
     param (
@@ -142,27 +107,12 @@ function Install-DomainControllerRole {
         [string]$GlobalSubnet
     )
     try {
-        # Install AD DS Role
         Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
         Write-Host "Active Directory Domain Services role installed."
-
-        # Configure AD DS
         $secureDSRMPassword = ConvertTo-SecureString $DSRMPassword -AsPlainText -Force
         Install-ADDSForest -DomainName $DomainName -SafeModeAdministratorPassword $secureDSRMPassword -Force
         Write-Host "Active Directory Domain Services configured."
-
-        # Configure Active Directory Sites and Services
-        New-ADReplicationSite -Name $SiteName -ErrorAction Stop
-        New-ADReplicationSubnet -Name $GlobalSubnet -Site $SiteName -ErrorAction Stop
-        Write-Host "AD Sites and Services configured."
-
-        # Configure DNS settings (example: creating a reverse lookup zone)
-        $reverseZone = ($GlobalSubnet -split '/')[0] -replace '\.', '-' + ".in-addr.arpa"
-        Add-DnsServerPrimaryZone -NetworkId $reverseZone -ReplicationScope Domain -ErrorAction Stop
-        Write-Host "DNS reverse lookup zone created."
-
-        # Additional DNS configurations as needed
-
+        # Additional configurations as needed
     } catch {
         Write-Host "Error installing Domain Controller role: $_"
     }
@@ -182,28 +132,109 @@ function Configure-NTPSettings {
         }
         Write-Host "NTP settings configured successfully on $PDCName."
     } catch {
-        Write-Host "Error configuring NTP settings on $($PDCName): $($_.Exception.Message)"
+        Write-Host "Error configuring NTP settings on $PDCName: $_"
     }
 }
 
+# Function to Install Hyper-V Role
+function Install-HyperVRole {
+    try {
+        Install-WindowsFeature -Name Hyper-V -IncludeAllSubFeature -IncludeManagementTools
+        Write-Host "Hyper-V role and features have been installed successfully."
+    } catch {
+        Write-Host "Error installing Hyper-V role: $_"
+    }
+}
+
+# Function to Create External Virtual Switch for Hyper-V
+function Create-ExternalVSwitch {
+    try {
+        $activeNic = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+        New-VMSwitch -Name "Ext_VSwitch01" -NetAdapterName $activeNic.Name -AllowManagementOS:$true
+        Write-Host "External Virtual Switch 'Ext_VSwitch01' created successfully."
+    } catch {
+        Write-Host "Error creating External Virtual Switch: $_"
+    }
+}
+
+# Function to Install Domain Controller Role
+function Install-DomainControllerRole {
+    param (
+        [string]$DomainName,
+        [string]$DSRMPassword,
+        [string]$SiteName,
+        [string]$GlobalSubnet
+    )
+    try {
+        Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+        Write-Host "Active Directory Domain Services role installed."
+        $secureDSRMPassword = ConvertTo-SecureString $DSRMPassword -AsPlainText -Force
+        Install-ADDSForest -DomainName $DomainName -SafeModeAdministratorPassword $secureDSRMPassword -Force
+        Write-Host "Active Directory Domain Services configured."
+        # Additional configurations as needed
+    } catch {
+        Write-Host "Error installing Domain Controller role: $_"
+    }
+}
+
+# Function to Configure NTP Settings
+function Configure-NTPSettings {
+    param (
+        [string]$PDCName,
+        [string[]]$NTPServers
+    )
+    try {
+        $ntpServerList = $NTPServers -join ","
+        Invoke-Command -ComputerName $PDCName -ScriptBlock {
+            w32tm /config /manualpeerlist:$using:ntpServerList /syncfromflags:manual /reliable:YES /update
+            Restart-Service w32time -Force
+        }
+        Write-Host "NTP settings configured successfully on $PDCName."
+    } catch {
+        Write-Host "Error configuring NTP settings on $PDCName: $_"
+    }
+}
+
+Part 2: Main Script Structure
+
 # Main Script
 
-# Prompt for user inputs
+# Prompt for server role
 $serverRole = Read-Host "Enter Server Role (Hyper-V/DomainController)"
-$hostname = Read-Host "Enter Hostname"
-$ipAddress = Read-Host "Enter IP Address"
-$subnetMask = Read-Host "Enter Subnet Mask"
-$gateway = Read-Host "Enter Gateway"
-$dns = Read-Host "Enter DNS"
-$domainName = Read-Host "Enter Domain Name"
-$dsrmPassword = Read-Host "Enter DSRM Password"
-$siteName = Read-Host "Enter Site Name"
-$globalSubnet = Read-Host "Enter Global Subnet"
-$ntpServers = @('0.us.pool.ntp.org', '1.us.pool.ntp.org', '2.us.pool.ntp.org', '3.us.pool.ntp.org')
-$domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
 
-# Configure Network
-Configure-Network -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+# Conditional prompts based on server role
+if ($serverRole -eq "Hyper-V") {
+    $hostname = Read-Host "Enter Hostname for Hyper-V"
+    $ipAddress = Read-Host "Enter IP Address"
+    $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
+    $gateway = Read-Host "Enter Gateway"
+    $dns = Read-Host "Enter DNS"
+    $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
+    
+    # Hyper-V specific configuration calls
+    # ...
+
+} elseif ($serverRole -eq "DomainController") {
+    $hostname = Read-Host "Enter Hostname for Domain Controller"
+    $ipAddress = Read-Host "Enter IP Address"
+    $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
+    $gateway = Read-Host "Enter Gateway"
+    $dns = Read-Host "Enter DNS"
+    $domainName = Read-Host "Enter Domain Name"
+    $dsrmPassword = Read-Host "Enter DSRM Password"
+    $siteName = Read-Host "Enter Site Name"
+    $globalSubnet = Read-Host "Enter Global Subnet"
+    $ntpServers = @('0.us.pool.ntp.org', '1.us.pool.ntp.org', '2.us.pool.ntp.org', '3.us.pool.ntp.org')
+    $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
+    
+    # Domain Controller specific configuration calls
+    # ...
+}
+
+# Configure Network based on role
+if ($serverRole -eq "Hyper-V" -or $serverRole -eq "DomainController") {
+    Configure-Network -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+}
 
 # Set RDP Settings (assuming RDP is to be enabled)
 Set-RDPSettings -EnableRDP $true
@@ -211,22 +242,31 @@ Set-RDPSettings -EnableRDP $true
 # Disable IE Enhanced Security Configuration
 Configure-IEEnhancedSecurity -DisableIEEsc $true
 
-# Check Server Role and perform specific configurations
+# Role-specific configurations
 switch ($serverRole) {
     "Hyper-V" {
         Install-HyperVRole
         Create-ExternalVSwitch
+        # Additional Hyper-V specific configurations
     }
     "DomainController" {
         Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
         Configure-NTPSettings -PDCName $hostname -NTPServers $ntpServers
+        # Additional Domain Controller specific configurations
     }
 }
 
-# Check if the server should be joined to a domain
+# Domain Join Logic
 if ($domainJoin -eq "Yes") {
-    $credential = Get-Credential -Message "Enter credentials for domain join"
-    Join-Domain -Credential $credential
+    if ($serverRole -eq "DomainController") {
+        # Logic for joining the domain controller to the domain
+        # This might include additional steps specific to domain controllers
+    } else {
+        # General domain join logic for other server roles
+        $credential = Get-Credential -Message "Enter credentials for domain join"
+        Add-Computer -DomainName $domainName -Credential $credential
+        Restart-Computer -Force
+    }
 }
 
 # Additional script logic...
