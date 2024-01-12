@@ -182,7 +182,7 @@ function Configure-NTPSettings {
         }
         Write-Host "NTP settings configured successfully on $PDCName."
     } catch {
-        Write-Host "Error configuring NTP settings on $PDCName: $($_.Exception.Message)"
+        Write-Host "Error configuring NTP settings on $($PDCName): $($_.Exception.Message)"
     }
 }
 
