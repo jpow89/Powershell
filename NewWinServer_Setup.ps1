@@ -1,3 +1,20 @@
+# Function to Validate IP Address
+function Validate-IPAddress {
+    param (
+        [string]$IPAddress
+    )
+    return $IPAddress -match '^\d{1,3}(\.\d{1,3}){3}$'
+}
+
+# Function to Validate DNS Address
+function Validate-DNS {
+    param (
+        [string]$DNS
+    )
+    # Simple validation, assuming DNS input is a single IP address
+    return Validate-IPAddress -IPAddress $DNS
+}
+
 # Function to Configure Network
 function Configure-Network {
     param (
@@ -6,6 +23,19 @@ function Configure-Network {
         [string]$Gateway,
         [string]$DNS
     )
+
+    # Validate IP Address
+    if (-not (Validate-IPAddress -IPAddress $IPAddress)) {
+        Write-Host "Invalid IP Address format."
+        return
+    }
+
+    # Validate DNS Address
+    if (-not (Validate-DNS -DNS $DNS)) {
+        Write-Host "Invalid DNS format."
+        return
+    }
+
     try {
         New-NetIPAddress -IPAddress $IPAddress -PrefixLength $SubnetMask -DefaultGateway $Gateway
         Set-DnsClientServerAddress -ServerAddresses $DNS
@@ -72,6 +102,37 @@ function Create-ExternalVSwitch {
     }
 }
 
+# Function to Join a Domain
+function Join-Domain {
+    param (
+        [PSCredential]$credential
+    )
+
+    # Prompt the user for the domain name
+    $DomainName = Read-Host -Prompt "Enter the domain name you wish to join"
+
+    # Check if the domain name is provided
+    if (-not $DomainName) {
+        Write-Host "Domain name is required."
+        return
+    }
+
+    try {
+        # Attempt to join the domain
+        Add-Computer -DomainName $DomainName -Credential $credential -Force -Verbose
+
+        # Confirm reboot
+        $rebootConfirmation = Read-Host "The computer has been successfully added to the domain '$DomainName'. A reboot is required to apply these changes. Would you like to reboot now? (Y/N)"
+        if ($rebootConfirmation -eq 'Y') {
+            Restart-Computer -Force
+        } else {
+            Write-Host "Please remember to manually reboot the computer to complete the domain joining process."
+        }
+    } catch {
+        Write-Error "Failed to join the domain: $_"
+    }
+}
+
 # Function to Install Domain Controller Role
 function Install-DomainControllerRole {
     param (
@@ -107,7 +168,6 @@ function Install-DomainControllerRole {
     }
 }
 
-
 # Function to Configure NTP Settings
 function Configure-NTPSettings {
     param (
@@ -140,6 +200,7 @@ $dsrmPassword = Read-Host "Enter DSRM Password"
 $siteName = Read-Host "Enter Site Name"
 $globalSubnet = Read-Host "Enter Global Subnet"
 $ntpServers = @('0.us.pool.ntp.org', '1.us.pool.ntp.org', '2.us.pool.ntp.org', '3.us.pool.ntp.org')
+$domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
 
 # Configure Network
 Configure-Network -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
@@ -160,6 +221,12 @@ switch ($serverRole) {
         Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
         Configure-NTPSettings -PDCName $hostname -NTPServers $ntpServers
     }
+}
+
+# Check if the server should be joined to a domain
+if ($domainJoin -eq "Yes") {
+    $credential = Get-Credential -Message "Enter credentials for domain join"
+    Join-Domain -Credential $credential
 }
 
 # Additional script logic...
