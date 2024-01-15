@@ -1,3 +1,23 @@
+# Define a logging function
+function Write-Log {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string] $Message
+    )
+
+    # Create the log directory if it doesn't exist
+    $logDir = "C:\Temp"
+    if (!(Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir | Out-Null
+    }
+
+    # Define the log file path
+    $logFile = Join-Path -Path $logDir -ChildPath "NewWinServer_Setup_v12.log"
+
+    # Write the message to the log file
+    Add-Content -Path $logFile -Value ("[" + (Get-Date).ToString() + "] " + $Message)
+}
+
 # Function to Validate IP Address
 function Validate-IPAddress {
     param (
@@ -172,7 +192,9 @@ if ($serverRole -eq "Hyper-V") {
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
     # Hyper-V specific configuration calls
+	Write-Log "Installing Hyper-V role..."
     Install-HyperVRole
+	Write-Log "Creating external virtual switch..."
     New-ExternalVSwitch
     # Additional Hyper-V specific configurations
 } elseif ($serverRole -eq "DomainController") {
@@ -206,8 +228,9 @@ if ($serverRole -eq "Hyper-V") {
 
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
-    # Domain Controller specific configuration calls
+    Write-Log "Installing Domain Controller role..."
     Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
+	Write-Log "Configuring NTP settings..."
     Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
     # Additional Domain Controller specific configurations
 }
@@ -226,9 +249,19 @@ Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
 # Role-specific configurations
 switch ($serverRole) {
     "Hyper-V" {
+        Write-Log "Starting Hyper-V configuration..."
+        Install-HyperVRole
+        Write-Log "Hyper-V role installed."
+        Create-ExternalVSwitch
+        Write-Log "External virtual switch created."
         # Additional Hyper-V specific configurations
     }
     "DomainController" {
+        Write-Log "Starting Domain Controller configuration..."
+        Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
+        Write-Log "Domain Controller role installed."
+        Configure-NTPSettings -PDCName $hostname -NTPServers $ntpServers
+        Write-Log "NTP settings configured."
         # Additional Domain Controller specific configurations
     }
 }
