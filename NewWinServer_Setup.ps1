@@ -192,9 +192,9 @@ if ($serverRole -eq "Hyper-V") {
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
     # Hyper-V specific configuration calls
-	Write-Log "Installing Hyper-V role..."
+    Write-Log "Installing Hyper-V role..."
     Install-HyperVRole
-	Write-Log "Creating external virtual switch..."
+    Write-Log "Creating external virtual switch..."
     New-ExternalVSwitch
     # Additional Hyper-V specific configurations
 } elseif ($serverRole -eq "DomainController") {
