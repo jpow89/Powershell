@@ -127,8 +127,33 @@ function Set-NTPSettings {
         Invoke-Command -ComputerName $PDCName -ScriptBlock {
             w32tm /config /manualpeerlist:$using:ntpServerList /syncfromflags:manual /reliable:YES /update
             Restart-Service w32time -Force
+            Write-Host "NTP settings configured successfully on $using:PDCName."
         }
-        Write-Host "NTP settings configured successfully on $PDCName."
+    } catch {
+        Write-Host "Error configuring NTP settings on $PDCName: `$_."
+    }
+}
+
+        # Main Script
+
+        # Prompt for server role
+        $serverRole = Read-Host "Enter Server Role (Hyper-V/DomainController)"
+
+        # Check and display current hostname
+        $currentHostname = [System.Net.Dns]::GetHostName()
+        $changeHostname = Read-Host "Current Hostname is: $currentHostname. Would you like to change it? (Yes/No)"
+        if ($changeHostname -eq "Yes") {
+            $hostname = Read-Host "Enter New Hostname"
+        } else {
+            $hostname = $currentHostname
+        }
+
+        # Conditional prompts based on server role
+        if ($serverRole -eq "Hyper-V") {
+            $currentIP = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).IPAddress
+            $currentSubnetMask = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).PrefixLength
+            $currentGateway = (Get-NetRoute | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' }).NextHop
+        }
     } catch {
         Write-Host "Error configuring NTP settings on $PDCName: ${_}"
     }
