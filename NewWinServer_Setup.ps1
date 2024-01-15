@@ -136,65 +136,6 @@ function Configure-NTPSettings {
     }
 }
 
-# Function to Install Hyper-V Role
-function Install-HyperVRole {
-    try {
-        Install-WindowsFeature -Name Hyper-V -IncludeAllSubFeature -IncludeManagementTools
-        Write-Host "Hyper-V role and features have been installed successfully."
-    } catch {
-        Write-Host "Error installing Hyper-V role: $_"
-    }
-}
-
-# Function to Create External Virtual Switch for Hyper-V
-function Create-ExternalVSwitch {
-    try {
-        $activeNic = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
-        New-VMSwitch -Name "Ext_VSwitch01" -NetAdapterName $activeNic.Name -AllowManagementOS:$true
-        Write-Host "External Virtual Switch 'Ext_VSwitch01' created successfully."
-    } catch {
-        Write-Host "Error creating External Virtual Switch: $_"
-    }
-}
-
-# Function to Install Domain Controller Role
-function Install-DomainControllerRole {
-    param (
-        [string]$DomainName,
-        [string]$DSRMPassword,
-        [string]$SiteName,
-        [string]$GlobalSubnet
-    )
-    try {
-        Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
-        Write-Host "Active Directory Domain Services role installed."
-        $secureDSRMPassword = ConvertTo-SecureString $DSRMPassword -AsPlainText -Force
-        Install-ADDSForest -DomainName $DomainName -SafeModeAdministratorPassword $secureDSRMPassword -Force
-        Write-Host "Active Directory Domain Services configured."
-        # Additional configurations as needed
-    } catch {
-        Write-Host "Error installing Domain Controller role: $_"
-    }
-}
-
-# Function to Configure NTP Settings
-function Configure-NTPSettings {
-    param (
-        [string]$PDCName,
-        [string[]]$NTPServers
-    )
-    try {
-        $ntpServerList = $NTPServers -join ","
-        Invoke-Command -ComputerName $PDCName -ScriptBlock {
-            w32tm /config /manualpeerlist:$using:ntpServerList /syncfromflags:manual /reliable:YES /update
-            Restart-Service w32time -Force
-        }
-        Write-Host "NTP settings configured successfully on $PDCName."
-    } catch {
-        Write-Host "Error configuring NTP settings on $PDCName: $_"
-    }
-}
-
 Part 2: Main Script Structure
 
 # Main Script
