@@ -136,7 +136,7 @@ function Set-NTPSettings {
     }
 }
 
-Part 2: Main Script Structure
+# Part 2: Main Script Structure
 
 # Main Script
 
