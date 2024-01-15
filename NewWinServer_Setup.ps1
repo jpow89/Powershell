@@ -125,12 +125,15 @@ function Set-NTPSettings {
     try {
         $ntpServerList = $NTPServers -join ","
         Invoke-Command -ComputerName $PDCName -ScriptBlock {
-            w32tm /config /manualpeerlist:$using:ntpServerList /syncfromflags:manual /reliable:YES /update
+            param (
+                $ntpServerList
+            )
+            w32tm /config /manualpeerlist:$ntpServerList /syncfromflags:manual /reliable:YES /update
             Restart-Service w32time -Force
             Write-Host "NTP settings configured successfully on $using:PDCName."
-        }
+        } -ArgumentList $ntpServerList
     } catch {
-        Write-Host "Error configuring NTP settings on $PDCName: $($error[0].Exception.Message)"
+        Write-Host "Error configuring NTP settings on ${PDCName}: $_"
     }
 }
 
@@ -154,10 +157,9 @@ function Set-NTPSettings {
             $currentSubnetMask = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).PrefixLength
             $currentGateway = (Get-NetRoute | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' }).NextHop
         }
-    } catch {
-        Write-Host "Error configuring NTP settings on $PDCName: ${_}"
-    }
-}
+        catch {
+        Write-Host "Error configuring NTP settings on ${PDCName}: $($_.Exception.Message)"
+    }    
 
 # Main Script
 
