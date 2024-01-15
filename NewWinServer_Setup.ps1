@@ -495,8 +495,99 @@ function Set-IEEnhancedSecurityConfiguration {
     Set-ItemProperty -Path $ieEscRegistryPath -Name $ieEscRegistryName -Value (!$DisableIEEsc)
 }
 
+# Logic for transferring FSMO roles
+# Prompt user for confirmation and perform the necessary steps
+$confirmTransfer = Read-Host "Are you sure you want to transfer the FSMO roles to $DomainController? (Yes/No)"
+if ($confirmTransfer -eq "Yes") {
+    Move-ADDirectoryServerOperationMasterRole -Identity $DomainController -OperationMasterRole SchemaMaster, DomainNamingMaster, PDCEmulator, RIDMaster, InfrastructureMaster -Force
+    Write-Log "FSMO roles transferred to $DomainController."
+} else {
+    Write-Log "FSMO roles transfer cancelled."
+}
 
+# Role-specific configurations
+switch ($serverRole) {
+    "Hyper-V" {
+        Write-Log "Starting Hyper-V configuration..."
+        Install-HyperVRole
+        Write-Log "Hyper-V role installed."
+        Create-ExternalVSwitch
+        Write-Log "External virtual switch created."
+        # Additional Hyper-V specific configurations
+    }
+    "DomainController" {
+        Write-Log "Starting Domain Controller configuration..."
+        $dsrmPasswordSecure = ConvertTo-SecureString -String $dsrmPassword -AsPlainText -Force
+        Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPasswordSecure -SiteName $siteName -GlobalSubnet $globalSubnet
+        Write-Log "Domain Controller role installed."
+        Configure-NTPSettings -PDCName $hostname -NTPServers $ntpServers
+        Write-Log "NTP settings configured."
+        # Additional Domain Controller specific configurations
 
+        $transferFSMORoles = Read-Host "Would you like to transfer the FSMO roles to this domain controller? (Yes/No)"
+        if ($transferFSMORoles -eq "Yes") {
+            Transfer-FSMORoles -DomainController $hostname
+        }
+    }
+}
+
+# Domain Join Logic
+if ($domainJoin -eq "Yes") {
+    if ($serverRole -eq "DomainController") {
+        # Logic for joining the domain controller to the domain
+        # This might include additional steps specific to domain controllers
+        $credential = Get-Credential -Message "Enter credentials for domain join"
+        Add-Computer -DomainName $domainName -Credential $credential
+        Restart-Computer -Force
+    } else {
+        # General domain join logic for other server roles
+        $credential = Get-Credential -Message "Enter credentials for domain join"
+        Add-Computer -DomainName $domainName -Credential $credential
+        Restart-Computer -Force
+    }
+}
+
+# Additional script logic...
+
+function Set-NetworkConfiguration {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$IPAddress,
+        [Parameter(Mandatory=$true)]
+        [string]$SubnetMask,
+        [Parameter(Mandatory=$true)]
+        [string]$Gateway,
+        [Parameter(Mandatory=$true)]
+        [string]$DNS
+    )
+
+    # Logic for setting network configuration
+    Set-NetIPAddress -IPAddress $IPAddress -PrefixLength $SubnetMask -DefaultGateway $Gateway
+    Set-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter).InterfaceIndex -ServerAddresses $DNS
+}
+
+function Set-RDPSettings {
+    param (
+        [Parameter(Mandatory=$true)]
+        [bool]$EnableRDP
+    )
+
+    # Logic for setting RDP settings
+    $rdpRegistryPath = 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
+    $rdpRegistryName = 'fDenyTSConnections'
+    Set-ItemProperty -Path $rdpRegistryPath -Name $rdpRegistryName -Value (!$EnableRDP)
+}
+
+function Set-IEEnhancedSecurityConfiguration {
+    param (
+        [Parameter(Mandatory=$true)]
+        [bool]$DisableIEEsc
+    )
+
+    # Logic for setting IE Enhanced Security Configuration
+    $ieEscRegistryPath = 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}'
+    $ieEscRegistryName = 'IsInstalled'
+    Set-ItemProperty -Path $ieEscRegistryPath -Name $ieEscRegistryName -Value (!$DisableIEEsc)
 }
 
 # Logic for transferring FSMO roles
@@ -593,104 +684,6 @@ function Set-IEEnhancedSecurityConfiguration {
     $ieEscRegistryName = 'IsInstalled'
     Set-ItemProperty -Path $ieEscRegistryPath -Name $ieEscRegistryName -Value (!$DisableIEEsc)
 }
-
-
-}
-
-# Logic for transferring FSMO roles
-# Prompt user for confirmation and perform the necessary steps
-$confirmTransfer = Read-Host "Are you sure you want to transfer the FSMO roles to $DomainController? (Yes/No)"
-if ($confirmTransfer -eq "Yes") {
-    Move-ADDirectoryServerOperationMasterRole -Identity $DomainController -OperationMasterRole SchemaMaster, DomainNamingMaster, PDCEmulator, RIDMaster, InfrastructureMaster -Force
-    Write-Log "FSMO roles transferred to $DomainController."
-} else {
-    Write-Log "FSMO roles transfer cancelled."
-}
-
-# Role-specific configurations
-switch ($serverRole) {
-    "Hyper-V" {
-        Write-Log "Starting Hyper-V configuration..."
-        Install-HyperVRole
-        Write-Log "Hyper-V role installed."
-        Create-ExternalVSwitch
-        Write-Log "External virtual switch created."
-        # Additional Hyper-V specific configurations
-    }
-    "DomainController" {
-        Write-Log "Starting Domain Controller configuration..."
-        $dsrmPasswordSecure = ConvertTo-SecureString -String $dsrmPassword -AsPlainText -Force
-        Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPasswordSecure -SiteName $siteName -GlobalSubnet $globalSubnet
-        Write-Log "Domain Controller role installed."
-        Configure-NTPSettings -PDCName $hostname -NTPServers $ntpServers
-        Write-Log "NTP settings configured."
-        # Additional Domain Controller specific configurations
-
-        $transferFSMORoles = Read-Host "Would you like to transfer the FSMO roles to this domain controller? (Yes/No)"
-        if ($transferFSMORoles -eq "Yes") {
-            Transfer-FSMORoles -DomainController $hostname
-        }
-    }
-}
-
-# Domain Join Logic
-if ($domainJoin -eq "Yes") {
-    if ($serverRole -eq "DomainController") {
-        # Logic for joining the domain controller to the domain
-        # This might include additional steps specific to domain controllers
-        $credential = Get-Credential -Message "Enter credentials for domain join"
-        Add-Computer -DomainName $domainName -Credential $credential
-        Restart-Computer -Force
-    } else {
-        # General domain join logic for other server roles
-        $credential = Get-Credential -Message "Enter credentials for domain join"
-        Add-Computer -DomainName $domainName -Credential $credential
-        Restart-Computer -Force
-    }
-}
-
-# Additional script logic...
-
-function Set-NetworkConfiguration {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$IPAddress,
-        [Parameter(Mandatory=$true)]
-        [string]$SubnetMask,
-        [Parameter(Mandatory=$true)]
-        [string]$Gateway,
-        [Parameter(Mandatory=$true)]
-        [string]$DNS
-    )
-
-    # Logic for setting network configuration
-    Set-NetIPAddress -IPAddress $IPAddress -PrefixLength $SubnetMask -DefaultGateway $Gateway
-    Set-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter).InterfaceIndex -ServerAddresses $DNS
-}
-
-function Set-RDPSettings {
-    param (
-        [Parameter(Mandatory=$true)]
-        [bool]$EnableRDP
-    )
-
-    # Logic for setting RDP settings
-    $rdpRegistryPath = 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
-    $rdpRegistryName = 'fDenyTSConnections'
-    Set-ItemProperty -Path $rdpRegistryPath -Name $rdpRegistryName -Value (!$EnableRDP)
-}
-
-function Set-IEEnhancedSecurityConfiguration {
-    param (
-        [Parameter(Mandatory=$true)]
-        [bool]$DisableIEEsc
-    )
-
-    # Logic for setting IE Enhanced Security Configuration
-    $ieEscRegistryPath = 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}'
-    $ieEscRegistryName = 'IsInstalled'
-    Set-ItemProperty -Path $ieEscRegistryPath -Name $ieEscRegistryName -Value (!$DisableIEEsc)
-}
 function Set-NetworkConfiguration {
     param (
         [Parameter(Mandatory=$true)]
@@ -785,6 +778,6 @@ if ($domainJoin -eq "Yes") {
 }
 
 # Additional script logic...
-pause
+
 
 
