@@ -1,7 +1,5 @@
-Part 1: Function Definitions
-
 # Function to Validate IP Address
-function Validate-IPAddress {
+function Test-IPAddress {
     param (
         [string]$IPAddress
     )
@@ -9,7 +7,7 @@ function Validate-IPAddress {
 }
 
 # Function to Validate DNS Address
-function Validate-DNS {
+function Test-DNS {
     param (
         [string]$DNS
     )
@@ -17,7 +15,7 @@ function Validate-DNS {
 }
 
 # Function to Configure Network
-function Configure-Network {
+function Set-NetworkConfiguration {
     param (
         [string]$IPAddress,
         [string]$SubnetMask,
@@ -61,7 +59,7 @@ function Set-RDPSettings {
 }
 
 # Function to Configure IE Enhanced Security
-function Configure-IEEnhancedSecurity {
+function Set-IEEnhancedSecurityConfiguration {
     param (
         [bool]$DisableIEEsc
     )
@@ -88,7 +86,7 @@ function Install-HyperVRole {
 }
 
 # Function to Create External Virtual Switch for Hyper-V
-function Create-ExternalVSwitch {
+function New-ExternalVSwitch {
     try {
         $activeNic = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
         New-VMSwitch -Name "Ext_VSwitch01" -NetAdapterName $activeNic.Name -AllowManagementOS:$true
@@ -102,7 +100,7 @@ function Create-ExternalVSwitch {
 function Install-DomainControllerRole {
     param (
         [string]$DomainName,
-        [string]$DSRMPassword,
+        [SecureString]$DSRMPassword,
         [string]$SiteName,
         [string]$GlobalSubnet
     )
@@ -119,7 +117,7 @@ function Install-DomainControllerRole {
 }
 
 # Function to Configure NTP Settings
-function Configure-NTPSettings {
+function Set-NTPSettings {
     param (
         [string]$PDCName,
         [string[]]$NTPServers
@@ -132,40 +130,76 @@ function Configure-NTPSettings {
         }
         Write-Host "NTP settings configured successfully on $PDCName."
     } catch {
-        Write-Host "Error configuring NTP settings on $PDCName: $_"
+        Write-Host "Error configuring NTP settings on $PDCName: ${_}"
     }
 }
-
-Part 2: Main Script Structure
 
 # Main Script
 
 # Prompt for server role
 $serverRole = Read-Host "Enter Server Role (Hyper-V/DomainController)"
 
+# Check and display current hostname
+$currentHostname = [System.Net.Dns]::GetHostName()
+$changeHostname = Read-Host "Current Hostname is: $currentHostname. Would you like to change it? (Yes/No)"
+if ($changeHostname -eq "Yes") {
+    $hostname = Read-Host "Enter New Hostname"
+} else {
+    $hostname = $currentHostname
+}
+
 # Conditional prompts based on server role
 if ($serverRole -eq "Hyper-V") {
-    $hostname = Read-Host "Enter Hostname for Hyper-V"
+    $currentIP = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).IPAddress
+    $currentSubnetMask = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).PrefixLength
+    $currentGateway = (Get-NetRoute | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' }).NextHop
+    $currentDNS = (Get-DnsClientServerAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).ServerAddresses
+
+    Write-Host "Current Network Settings:"
+    Write-Host "IP Address: $currentIP"
+    Write-Host "Subnet Mask: $currentSubnetMask"
+    Write-Host "Gateway: $currentGateway"
+    Write-Host "DNS: $currentDNS"
+
     $ipAddress = Read-Host "Enter IP Address"
     $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
     $gateway = Read-Host "Enter Gateway"
     $dns = Read-Host "Enter DNS"
+    
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
     # Hyper-V specific configuration calls
     # ...
 
 } elseif ($serverRole -eq "DomainController") {
-    $hostname = Read-Host "Enter Hostname for Domain Controller"
+    $currentIP = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).IPAddress
+    $currentSubnetMask = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).PrefixLength
+    $currentGateway = (Get-NetRoute | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' }).NextHop
+    $currentDNS = (Get-DnsClientServerAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).ServerAddresses
+
+    Write-Host "Current Network Settings:"
+    Write-Host "IP Address: $currentIP"
+    Write-Host "Subnet Mask: $currentSubnetMask"
+    Write-Host "Gateway: $currentGateway"
+    Write-Host "DNS: $currentDNS"
+
     $ipAddress = Read-Host "Enter IP Address"
     $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
     $gateway = Read-Host "Enter Gateway"
     $dns = Read-Host "Enter DNS"
+    
     $domainName = Read-Host "Enter Domain Name"
     $dsrmPassword = Read-Host "Enter DSRM Password"
     $siteName = Read-Host "Enter Site Name"
     $globalSubnet = Read-Host "Enter Global Subnet"
-    $ntpServers = @('0.us.pool.ntp.org', '1.us.pool.ntp.org', '2.us.pool.ntp.org', '3.us.pool.ntp.org')
+    
+    $useDefaultNTP = Read-Host "Use default NTP servers? (Yes/No)"
+    if ($useDefaultNTP -eq "No") {
+        $ntpServers = Read-Host "Enter Comma Separated NTP Servers"
+    } else {
+        $ntpServers = @('0.us.pool.ntp.org', '1.us.pool.ntp.org', '2.us.pool.ntp.org', '3.us.pool.ntp.org')
+    }
+
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
     # Domain Controller specific configuration calls
