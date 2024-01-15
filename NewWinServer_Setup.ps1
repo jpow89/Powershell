@@ -130,7 +130,7 @@ function Set-NTPSettings {
             Write-Host "NTP settings configured successfully on $using:PDCName."
         }
     } catch {
-        Write-Host "Error configuring NTP settings on $PDCName: `$_."
+        Write-Host "Error configuring NTP settings on $PDCName: $($error[0].Exception.Message)"
     }
 }
 
