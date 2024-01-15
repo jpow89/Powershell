@@ -169,8 +169,9 @@ if ($serverRole -eq "Hyper-V") {
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
     # Hyper-V specific configuration calls
-    # ...
-
+    Install-HyperVRole
+    New-ExternalVSwitch
+    # Additional Hyper-V specific configurations
 } elseif ($serverRole -eq "DomainController") {
     $currentIP = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).IPAddress
     $currentSubnetMask = (Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).PrefixLength
@@ -203,30 +204,28 @@ if ($serverRole -eq "Hyper-V") {
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
     
     # Domain Controller specific configuration calls
-    # ...
+    Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
+    Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
+    # Additional Domain Controller specific configurations
 }
 
 # Configure Network based on role
 if ($serverRole -eq "Hyper-V" -or $serverRole -eq "DomainController") {
-    Configure-Network -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+    Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
 }
 
 # Set RDP Settings (assuming RDP is to be enabled)
 Set-RDPSettings -EnableRDP $true
 
 # Disable IE Enhanced Security Configuration
-Configure-IEEnhancedSecurity -DisableIEEsc $true
+Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
 
 # Role-specific configurations
 switch ($serverRole) {
     "Hyper-V" {
-        Install-HyperVRole
-        Create-ExternalVSwitch
         # Additional Hyper-V specific configurations
     }
     "DomainController" {
-        Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
-        Configure-NTPSettings -PDCName $hostname -NTPServers $ntpServers
         # Additional Domain Controller specific configurations
     }
 }
