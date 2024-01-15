@@ -247,7 +247,7 @@ Display-CurrentNetworkSettings
 
     
 
-    # Domain Controller specific network configuration prompts
+# Domain Controller specific network configuration prompts
 $ipAddress = Read-Host "Enter IP Address for Domain Controller"
 $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
 $gateway = Read-Host "Enter Gateway"
@@ -271,8 +271,8 @@ Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword
 Write-Log "Active Directory Domain Services role installed and configured."
 
 # Configure NTP Settings (if not using default NTP servers)
-$useDefaultNTP = Read-Host "Use default NTP servers? (Yes/No)"
-if ($useDefaultNTP -eq "No") {
+$useDefaultNTP = (Read-Host "Use default NTP servers? (Yes/Y/No/N)").ToUpper()
+if ($useDefaultNTP -eq "NO" -or $useDefaultNTP -eq "N") {
     $ntpServers = Read-Host "Enter Comma Separated NTP Servers"
     Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
     Write-Log "NTP settings configured for Domain Controller."
@@ -298,3 +298,99 @@ Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
 Write-Host "Configuration complete. Please review the log for details."
 
 
+Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+
+# Hyper-V specific configuration calls
+Write-Log "Installing Hyper-V role..."
+Install-HyperVRole
+Write-Log "Creating external virtual switch..."
+New-ExternalVSwitch
+}
+
+$domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
+if ($domainJoin -eq "Yes" -or $domainJoin -eq "Y") {
+    $domainName = Read-Host "Enter the domain name to join"
+    $credential = Get-Credential -Message "Enter credentials for domain join"
+    Add-Computer -DomainName $domainName -Credential $credential
+    Restart-Computer -Force
+    Write-Log "Server joined to the domain $domainName and restarted."
+}
+
+elseif ($serverRole -eq "DomainController") 
+
+# Display current network settings for Domain Controller
+Display-CurrentNetworkSettings
+
+"DomainController"
+# Domain Controller specific configuration
+if ($serverRole -eq "DomainController") {
+    Write-Log "Starting Domain Controller configuration..."
+
+    # Display current network settings
+    Display-CurrentNetworkSettings
+
+    # Prompt for Domain Controller specific network settings
+    $ipAddress = Read-Host "Enter IP Address for Domain Controller"
+    $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
+    $gateway = Read-Host "Enter Gateway"
+    $dns = Read-Host "Enter DNS"
+
+    # Validate network settings
+    if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
+        Write-Host "Invalid network settings for Domain Controller."
+    }
+}
+
+# Display current network settings for Domain Controller
+Display-CurrentNetworkSettings
+
+
+
+# Domain Controller specific network configuration prompts
+$ipAddress = Read-Host "Enter IP Address for Domain Controller"
+$subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
+$gateway = Read-Host "Enter Gateway"
+$dns = Read-Host "Enter DNS"
+
+# Validate and apply network settings
+if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
+    Write-Host "Invalid network settings for Domain Controller."
+    return
+}
+Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+
+# Additional Domain Controller specific configurations
+$domainName = Read-Host "Enter Domain Name"
+$dsrmPassword = Read-Host "Enter DSRM Password" -AsSecureString
+$siteName = Read-Host "Enter Site Name"
+$globalSubnet = Read-Host "Enter Global Subnet"
+
+# Install Domain Controller Role and configure ADDS
+Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
+Write-Log "Active Directory Domain Services role installed and configured."
+
+# Configure NTP Settings (if not using default NTP servers)
+$useDefaultNTP = (Read-Host "Use default NTP servers? (Yes/Y/No/N)").ToUpper()
+if ($useDefaultNTP -eq "NO" -or $useDefaultNTP -eq "N") {
+    $ntpServers = Read-Host "Enter Comma Separated NTP Servers"
+    Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
+    Write-Log "NTP settings configured for Domain Controller."
+}
+
+# Domain join logic for Domain Controller
+if ($domainJoin -eq "Yes" -or $domainJoin -eq "yes" -or $domainJoin -eq "Y" -or $domainJoin -eq "y") {
+    Write-Log "Joining server to the domain as a Domain Controller..."
+    # Since the server is being configured as a Domain Controller, it will inherently join the domain as part of the promotion process
+    # Additional logic for joining domain, if not covered in Install-DomainControllerRole
+}
+
+# Common configurations for all roles
+# Set RDP Settings (assuming RDP is to be enabled by default)
+Set-RDPSettings -EnableRDP $true
+
+# Disable IE Enhanced Security Configuration
+Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
+
+# Additional common configurations can be placed here...
+
+Write-Host "Configuration complete. Please review the log for details."
