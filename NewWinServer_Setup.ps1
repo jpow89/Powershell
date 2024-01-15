@@ -1,4 +1,4 @@
-Part 1: Function Definitions
+# Part 1: Function Definitions
 
 # Function to Validate IP Address
 function Test-IPAddress {
@@ -233,7 +233,7 @@ function Set-NTPSettings {
     }
 }
 
-Part 2: Main Script Structure
+# Part 2: Main Script Structure
 
 # Main Script
 
