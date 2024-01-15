@@ -785,6 +785,6 @@ if ($domainJoin -eq "Yes") {
 }
 
 # Additional script logic...
-
+pause
 
 
