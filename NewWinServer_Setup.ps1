@@ -13,7 +13,7 @@ function Write-Log {
     }
 
     # Define the log file path
-    $logFile = Join-Path -Path $logDir -ChildPath "NewWinServer_Setup_v12.log"
+    $logFile = Join-Path -Path $logDir -ChildPath "NewWinServer_Setup_v15.log"
 
     # Write the message to the log file
     Add-Content -Path $logFile -Value ("[" + (Get-Date).ToString() + "] " + $Message)
@@ -28,7 +28,7 @@ function Handle-Error {
         [string] $FunctionName
     )
 
-    Write-Log "Error in $FunctionName: $ErrorMessage"
+    Write-Log "Error in ${FunctionName}: ${ErrorMessage}"
     Write-Host "An error occurred in $FunctionName. Please check the log for details."
 }
 
@@ -222,6 +222,28 @@ $serverRole = Read-Host "Enter Server Role (Hyper-V/DomainController)"
 # Conditional prompts and configurations based on server role
 # Depending on the role selected (Hyper-V/DomainController), different configuration steps are taken
 if ($serverRole -eq "Hyper-V") {
+    # Hyper-V specific network configuration prompts
+    $ipAddress = Read-Host "Enter IP Address for Hyper-V"
+    $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
+    $gateway = Read-Host "Enter Gateway"
+    $dns = Read-Host "Enter DNS"
+    
+    # Validate and apply network settings
+    if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
+        Write-Host "Invalid network settings for Hyper-V."
+        return
+    }
+    Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+
+    # Hyper-V specific configuration calls
+    Write-Log "Installing Hyper-V role..."
+    Install-HyperVRole
+    Write-Log "Creating external virtual switch..."
+    New-ExternalVSwitch
+
+    # Hyper-V Domain Join Logic
+    $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
+}
     # Display current network settings for Hyper-V
     Display-CurrentNetworkSettings
     
@@ -339,6 +361,5 @@ Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
 
 Write-Host "Configuration complete. Please review the log for details."
 Write-Log "Configuration complete. Please review the log for details."
-
 
 
