@@ -246,13 +246,13 @@ if ($serverRole -eq "Hyper-V") {
 
     # Hyper-V Domain Join Logic
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
-    if ($domainJoin -eq "Yes") {
-        $credential = Get-Credential -Message "Enter credentials for domain join"
-        Add-Computer -DomainName $domainName -Credential $credential
-        Restart-Computer -Force
-        Write-Log "Hyper-V host joined to the domain and restarted."
-    }
-} elseif ($serverRole -eq "DomainController") {
+if ($domainJoin -eq "Yes") {
+    $domainName = Read-Host "Enter the domain name to join"
+    $credential = Get-Credential -Message "Enter credentials for domain join"
+    Add-Computer -DomainName $domainName -Credential $credential
+    Restart-Computer -Force
+    Write-Log "Hyper-V host joined to the domain: $domainName and restarted."
+}
 
 # Domain Controller specific configuration
 # Includes network settings, installation and configuration of Active Directory Domain Services, and NTP settings
