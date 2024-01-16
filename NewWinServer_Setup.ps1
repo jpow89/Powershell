@@ -1,4 +1,5 @@
 # Define a logging function
+# This function creates a log file and records messages to it, useful for tracking script execution
 function Write-Log {
     param (
         [Parameter(Mandatory=$true)]
@@ -18,7 +19,22 @@ function Write-Log {
     Add-Content -Path $logFile -Value ("[" + (Get-Date).ToString() + "] " + $Message)
 }
 
+# Centralized Error Handling
+function Handle-Error {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string] $ErrorMessage,
+        [Parameter(Mandatory=$true)]
+        [string] $FunctionName
+    )
+
+    Write-Log "Error in $FunctionName: $ErrorMessage"
+    Write-Host "An error occurred in $FunctionName. Please check the log for details."
+}
+
+
 # Function to Validate IP Address
+# Validates the format of an IP address to ensure it's in the correct structure
 function Validate-IPAddress {
     param (
         [string]$IPAddress
@@ -27,6 +43,7 @@ function Validate-IPAddress {
 }
 
 # Function to Validate DNS Address
+# Utilizes the IP address validation function to validate DNS addresses
 function Validate-DNS {
     param (
         [string]$DNS
@@ -35,6 +52,8 @@ function Validate-DNS {
 }
 
 # Function to Configure Network
+# Configures the network settings including IP address, subnet mask, gateway, and DNS
+# Validates the input and applies the configuration
 function Set-NetworkConfiguration {
     param (
         [string]$IPAddress,
@@ -43,11 +62,11 @@ function Set-NetworkConfiguration {
         [string]$DNS
     )
     if (-not (Validate-IPAddress -IPAddress $IPAddress)) {
-        Write-Host "Invalid IP Address format."
+        Write-Log "Invalid IP Address format."
         return
     }
     if (-not (Validate-DNS -DNS $DNS)) {
-        Write-Host "Invalid DNS format."
+        Write-Log "Invalid DNS format."
         return
     }
     try {
@@ -55,10 +74,12 @@ function Set-NetworkConfiguration {
         Set-DnsClientServerAddress -ServerAddresses $DNS
         Write-Host "Network configuration applied successfully."
     } catch {
-        Write-Host "Error in network configuration: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Set-NetworkConfiguration"
     }
 }
+
 # Function to Set RDP Settings
+# Enables or disables Remote Desktop Protocol on the server and updates the firewall settings accordingly
 function Set-RDPSettings {
     param (
         [bool]$EnableRDP
@@ -73,11 +94,12 @@ function Set-RDPSettings {
         }
         Write-Host "RDP setting updated."
     } catch {
-        Write-Host "Error configuring RDP settings: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Set-RDPSettings"
     }
 }
 
 # Function to Configure IE Enhanced Security
+# Enables or disables Internet Explorer Enhanced Security Configuration based on the input
 function Set-IEEnhancedSecurityConfiguration {
     param (
         [bool]$DisableIEEsc
@@ -90,32 +112,35 @@ function Set-IEEnhancedSecurityConfiguration {
         Set-ItemProperty -Path $UserKey -Name "IsInstalled" -Value $value
         Write-Host "IE Enhanced Security Configuration updated."
     } catch {
-        Write-Host "Error configuring IE Enhanced Security: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Set-IEEnhancedSecurityConfiguration"
     }
 }
 
 # Function to Install Hyper-V Role
+# Installs the Hyper-V role along with all sub-features and management tools
 function Install-HyperVRole {
     try {
         Install-WindowsFeature -Name Hyper-V -IncludeAllSubFeature -IncludeManagementTools
         Write-Host "Hyper-V role and features have been installed successfully."
     } catch {
-        Write-Host "Error installing Hyper-V role: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Install-HyperVRole"
     }
 }
 
 # Function to Create External Virtual Switch for Hyper-V
+# Creates a new external virtual switch for Hyper-V, allowing VMs to connect to the external network
 function New-ExternalVSwitch {
     try {
         $activeNic = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
         New-VMSwitch -Name "Ext_VSwitch01" -NetAdapterName $activeNic.Name -AllowManagementOS:$true
         Write-Host "External Virtual Switch 'Ext_VSwitch01' created successfully."
         } catch {
-        Write-Host "Error creating External Virtual Switch: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "New-ExternalVSwitch"
         }
         }
 
-# Function to Install Domain Controller Role        
+# Function to Install Domain Controller Role  
+# Installs and configures the Active Directory Domain Services role
 function Install-DomainControllerRole {
     param (
         [string]$DomainName,
@@ -130,11 +155,12 @@ function Install-DomainControllerRole {
         Install-ADDSForest -DomainName $DomainName -SafeModeAdministratorPassword $secureDSRMPassword -Force
         Write-Host "Active Directory Domain Services configured."
     } catch {
-        Write-Host "Error installing Domain Controller role: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Install-DomainControllerRole"
     }
 }
 
 #Function to Configure NTP Settings
+# Sets up NTP settings on the Primary Domain Controller, synchronizing time across the network
 function Set-NTPSettings {
     param (
         [string]$PDCName,
@@ -149,11 +175,26 @@ function Set-NTPSettings {
             Write-Host "NTP settings configured successfully on $using:PDCName."
         } -ArgumentList $ntpServerList
     } catch {
-        Write-Host "Error configuring NTP settings on ${PDCName}: $_"
+        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Set-NTPSettings"
+    }
+}
+
+# Function to Get and Configure Hostname
+function Get-AndChangeHostname {
+    $currentHostname = [System.Net.Dns]::GetHostName()
+    $changeHostname = Read-Host "Current Hostname is: $currentHostname. Would you like to change it? (Yes/No)"
+    if ($changeHostname -eq "Yes") {
+        $hostname = Read-Host "Enter New Hostname"
+        Rename-Computer -NewName $hostname
+        Write-Log "Hostname changed to $hostname"
+    } else {
+        $hostname = $currentHostname
+        Write-Log "Hostname remains as $currentHostname"
     }
 }
 
 # Function to Display Current Network Settings
+# Retrieves and displays the current network configuration of the server
 function Display-CurrentNetworkSettings {
     $currentIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq 'Ethernet' -and $_.PrefixOrigin -ne 'WellKnown' }).IPAddress
     $currentSubnetMask = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq 'Ethernet' -and $_.PrefixOrigin -ne 'WellKnown' }).PrefixLength
@@ -168,23 +209,18 @@ function Display-CurrentNetworkSettings {
 }
 
 # Main Script Logic
+# This section contains the primary logic of the script, starting with hostname configuration
+# It prompts the user for server role and executes role-specific configurations
 
-# Check and display current hostname
-$currentHostname = [System.Net.Dns]::GetHostName()
-$changeHostname = Read-Host "Current Hostname is: $currentHostname. Would you like to change it? (Yes/No)"
-if ($changeHostname -eq "Yes") {
-    $hostname = Read-Host "Enter New Hostname"
-    Rename-Computer -NewName $hostname
-    Write-Log "Hostname changed to $hostname"
-} else {
-    $hostname = $currentHostname
-    Write-Log "Hostname remains as $currentHostname"
-}
+# Check and display current hostname, prompt for change if necessary
+# Retrieves the current hostname and offers the user an option to change it
+Get-AndChangeHostname
 
 # Prompt for server role
 $serverRole = Read-Host "Enter Server Role (Hyper-V/DomainController)"
 
 # Conditional prompts and configurations based on server role
+# Depending on the role selected (Hyper-V/DomainController), different configuration steps are taken
 if ($serverRole -eq "Hyper-V") {
     # Display current network settings for Hyper-V
     Display-CurrentNetworkSettings
@@ -203,130 +239,27 @@ if ($serverRole -eq "Hyper-V") {
     Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
 
     # Hyper-V specific configuration calls
-        Write-Log "Installing Hyper-V role..."
-        Install-HyperVRole
-        Write-Log "Creating external virtual switch..."
-        New-ExternalVSwitch
-    }
+    Write-Log "Installing Hyper-V role..."
+    Install-HyperVRole
+    Write-Log "Creating external virtual switch..."
+    New-ExternalVSwitch
 
-    # Hyper-V Domain Join Logic (if applicable)
+    # Hyper-V Domain Join Logic
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
-if ($domainJoin -eq "Yes") {
-    $credential = Get-Credential -Message "Enter credentials for domain join"
-    Add-Computer -DomainName $domainName -Credential $credential
-    Restart-Computer -Force
-    Write-Log "Hyper-V host joined to the domain and restarted."
-elseif ($serverRole -eq "DomainController") 
+    if ($domainJoin -eq "Yes") {
+        $credential = Get-Credential -Message "Enter credentials for domain join"
+        Add-Computer -DomainName $domainName -Credential $credential
+        Restart-Computer -Force
+        Write-Log "Hyper-V host joined to the domain and restarted."
+    }
+} elseif ($serverRole -eq "DomainController") {
 
-# Display current network settings for Domain Controller
-Display-CurrentNetworkSettings
-
-"DomainController"
-    # Domain Controller specific configuration
-    if ($serverRole -eq "DomainController") {
+# Domain Controller specific configuration
+# Includes network settings, installation and configuration of Active Directory Domain Services, and NTP settings
+if ($serverRole -eq "DomainController") {
         Write-Log "Starting Domain Controller configuration..."
 
-        # Display current network settings
-        Display-CurrentNetworkSettings
-
-        # Prompt for Domain Controller specific network settings
-        $ipAddress = Read-Host "Enter IP Address for Domain Controller"
-        $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
-        $gateway = Read-Host "Enter Gateway"
-        $dns = Read-Host "Enter DNS"
-        
-        # Validate network settings
-        if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
-            Write-Host "Invalid network settings for Domain Controller."
-        }
-    }
-
-    # Display current network settings for Domain Controller
-    Display-CurrentNetworkSettings
-    
-
-    
-
-# Domain Controller specific network configuration prompts
-$ipAddress = Read-Host "Enter IP Address for Domain Controller"
-$subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
-$gateway = Read-Host "Enter Gateway"
-$dns = Read-Host "Enter DNS"
-
-# Validate and apply network settings
-if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
-    Write-Host "Invalid network settings for Domain Controller."
-    return
-}
-Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
-
-# Additional Domain Controller specific configurations
-$domainName = Read-Host "Enter Domain Name"
-$dsrmPassword = Read-Host "Enter DSRM Password" -AsSecureString
-$siteName = Read-Host "Enter Site Name"
-$globalSubnet = Read-Host "Enter Global Subnet"
-
-# Install Domain Controller Role and configure ADDS
-Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
-Write-Log "Active Directory Domain Services role installed and configured."
-
-# Configure NTP Settings (if not using default NTP servers)
-$useDefaultNTP = (Read-Host "Use default NTP servers? (Yes/Y/No/N)").ToUpper()
-if ($useDefaultNTP -eq "NO" -or $useDefaultNTP -eq "N") {
-    $ntpServers = Read-Host "Enter Comma Separated NTP Servers"
-    Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
-    Write-Log "NTP settings configured for Domain Controller."
-}
-
-# Domain join logic for Domain Controller
-if ($domainJoin -eq "Yes") {
-Write-Log "Joining server to the domain as a Domain Controller..."
-        # Since the server is being configured as a Domain Controller, it will inherently join the domain as part of the promotion process
-        # Additional logic for joining domain, if not covered in Install-DomainControllerRole
-    }
-}
-
-# Common configurations for all roles
-# Set RDP Settings (assuming RDP is to be enabled by default)
-Set-RDPSettings -EnableRDP $true
-
-# Disable IE Enhanced Security Configuration
-Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
-
-# Additional common configurations can be placed here...
-
-Write-Host "Configuration complete. Please review the log for details."
-
-
-Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
-
-# Hyper-V specific configuration calls
-Write-Log "Installing Hyper-V role..."
-Install-HyperVRole
-Write-Log "Creating external virtual switch..."
-New-ExternalVSwitch
-}
-
-$domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
-if ($domainJoin -eq "Yes" -or $domainJoin -eq "Y") {
-    $domainName = Read-Host "Enter the domain name to join"
-    $credential = Get-Credential -Message "Enter credentials for domain join"
-    Add-Computer -DomainName $domainName -Credential $credential
-    Restart-Computer -Force
-    Write-Log "Server joined to the domain $domainName and restarted."
-}
-
-elseif ($serverRole -eq "DomainController") 
-
-# Display current network settings for Domain Controller
-Display-CurrentNetworkSettings
-
-"DomainController"
-# Domain Controller specific configuration
-if ($serverRole -eq "DomainController") {
-    Write-Log "Starting Domain Controller configuration..."
-
-    # Display current network settings
+# Display current network settings
     Display-CurrentNetworkSettings
 
     # Prompt for Domain Controller specific network settings
@@ -334,57 +267,68 @@ if ($serverRole -eq "DomainController") {
     $subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
     $gateway = Read-Host "Enter Gateway"
     $dns = Read-Host "Enter DNS"
-
-    # Validate network settings
+    
+    # Validate and apply network settings
     if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
         Write-Host "Invalid network settings for Domain Controller."
+        return
+    }
+    Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
+
+    # Additional Domain Controller specific configurations
+    $domainName = Read-Host "Enter Domain Name"
+    $dsrmPassword = Read-Host "Enter DSRM Password" -AsSecureString
+    $siteName = Read-Host "Enter Site Name"
+    $globalSubnet = Read-Host "Enter Global Subnet"
+
+    # Install Domain Controller Role and configure ADDS
+    Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
+    Write-Log "Active Directory Domain Services role installed and configured."
+
+    # Configure NTP Settings (if not using default NTP servers)
+    $useDefaultNTP = Read-Host "Use default NTP servers? (Yes/No)"
+    if ($useDefaultNTP -eq "No") {
+        $ntpServers = Read-Host "Enter Comma Separated NTP Servers"
+        Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
+        Write-Log "NTP settings configured for Domain Controller."
+    }
+
+    # Domain join logic for Domain Controller
+    $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
+    if ($domainJoin -eq "Yes") {
+        Write-Log "Joining server to the domain as a Domain Controller..."
+        # Additional logic for joining domain, if not covered in Install-DomainControllerRole
+        # Ensure this logic is implemented as per your requirements
     }
 }
 
-# Display current network settings for Domain Controller
-Display-CurrentNetworkSettings
-
-
-
-# Domain Controller specific network configuration prompts
-$ipAddress = Read-Host "Enter IP Address for Domain Controller"
-$subnetMask = Read-Host "Enter Subnet Mask (as prefix length, e.g., 24)"
-$gateway = Read-Host "Enter Gateway"
-$dns = Read-Host "Enter DNS"
-
-# Validate and apply network settings
-if (-not (Validate-IPAddress -IPAddress $ipAddress) -or -not (Validate-DNS -DNS $dns)) {
-    Write-Host "Invalid network settings for Domain Controller."
-    return
-}
-Set-NetworkConfiguration -IPAddress $ipAddress -SubnetMask $subnetMask -Gateway $gateway -DNS $dns
-
-# Additional Domain Controller specific configurations
-$domainName = Read-Host "Enter Domain Name"
-$dsrmPassword = Read-Host "Enter DSRM Password" -AsSecureString
-$siteName = Read-Host "Enter Site Name"
-$globalSubnet = Read-Host "Enter Global Subnet"
-
-# Install Domain Controller Role and configure ADDS
-Install-DomainControllerRole -DomainName $domainName -DSRMPassword $dsrmPassword -SiteName $siteName -GlobalSubnet $globalSubnet
-Write-Log "Active Directory Domain Services role installed and configured."
-
-# Configure NTP Settings (if not using default NTP servers)
-$useDefaultNTP = (Read-Host "Use default NTP servers? (Yes/Y/No/N)").ToUpper()
-if ($useDefaultNTP -eq "NO" -or $useDefaultNTP -eq "N") {
-    $ntpServers = Read-Host "Enter Comma Separated NTP Servers"
-    Set-NTPSettings -PDCName $hostname -NTPServers $ntpServers
-    Write-Log "NTP settings configured for Domain Controller."
-}
-
-# Domain join logic for Domain Controller
-if ($domainJoin -eq "Yes" -or $domainJoin -eq "yes" -or $domainJoin -eq "Y" -or $domainJoin -eq "y") {
-    Write-Log "Joining server to the domain as a Domain Controller..."
-    # Since the server is being configured as a Domain Controller, it will inherently join the domain as part of the promotion process
-    # Additional logic for joining domain, if not covered in Install-DomainControllerRole
+# Additional Domain Join Logic for Domain Controller
+if ($serverRole -eq "DomainController") {
+    # Determine if this is a new domain or joining an existing domain
+    $domainType = Read-Host "Is this a New Domain or Existing Domain? (New/Existing)"
+    
+    if ($domainType -eq "New") {
+        # Logic for creating a new domain (already covered in your script)
+    } elseif ($domainType -eq "Existing") {
+        # Logic for adding to an existing domain
+        $existingDomainName = Read-Host "Enter the existing domain name"
+        $domainControllerCredential = Get-Credential -Message "Enter credentials for joining the existing domain"
+        
+        try {
+            Install-ADDSDomainController -DomainName $existingDomainName -Credential $domainControllerCredential
+            Write-Log "Added new Domain Controller to existing domain: $existingDomainName"
+        } catch {
+            Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Install-ADDSDomainController"
+        }
+    }
 }
 
 # Common configurations for all roles
+# Settings that are applied regardless of the server role, like time zone, RDP settings, and IE security configuration
+
+# Use 'Central Standard Time'
+Set-TimeZone -Name 'Central Standard Time' 
+
 # Set RDP Settings (assuming RDP is to be enabled by default)
 Set-RDPSettings -EnableRDP $true
 
@@ -394,3 +338,7 @@ Set-IEEnhancedSecurityConfiguration -DisableIEEsc $true
 # Additional common configurations can be placed here...
 
 Write-Host "Configuration complete. Please review the log for details."
+Write-Log "Configuration complete. Please review the log for details."
+
+
+
