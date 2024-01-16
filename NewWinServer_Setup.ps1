@@ -220,7 +220,6 @@ Get-AndChangeHostname
 $serverRole = Read-Host "Enter Server Role (Hyper-V/DomainController)"
 
 # Conditional prompts and configurations based on server role
-# Depending on the role selected (Hyper-V/DomainController), different configuration steps are taken
 if ($serverRole -eq "Hyper-V") {
     # Display current network settings for Hyper-V
     Display-CurrentNetworkSettings
@@ -246,20 +245,17 @@ if ($serverRole -eq "Hyper-V") {
 
     # Hyper-V Domain Join Logic
     $domainJoin = Read-Host "Would you like to join this server to a domain? (Yes/No)"
-if ($domainJoin -eq "Yes") {
-    $domainName = Read-Host "Enter the domain name to join"
-    $credential = Get-Credential -Message "Enter credentials for domain join"
-    Add-Computer -DomainName $domainName -Credential $credential
-    Restart-Computer -Force
-    Write-Log "Hyper-V host joined to the domain: $domainName and restarted."
-}
+    if ($domainJoin -eq "Yes") {
+        $domainName = Read-Host "Enter the domain name to join"
+        $credential = Get-Credential -Message "Enter credentials for domain join"
+        Add-Computer -DomainName $domainName -Credential $credential
+        Restart-Computer -Force
+        Write-Log "Hyper-V host joined to the domain: $domainName and restarted."
+    }
+} elseif ($serverRole -eq "DomainController") {
+    # Domain Controller specific configuration
 
-# Domain Controller specific configuration
-# Includes network settings, installation and configuration of Active Directory Domain Services, and NTP settings
-if ($serverRole -eq "DomainController") {
-        Write-Log "Starting Domain Controller configuration..."
-
-# Display current network settings
+    # Display current network settings
     Display-CurrentNetworkSettings
 
     # Prompt for Domain Controller specific network settings
@@ -300,11 +296,8 @@ if ($serverRole -eq "DomainController") {
         # Additional logic for joining domain, if not covered in Install-DomainControllerRole
         # Ensure this logic is implemented as per your requirements
     }
-}
 
-# Additional Domain Join Logic for Domain Controller
-if ($serverRole -eq "DomainController") {
-    # Determine if this is a new domain or joining an existing domain
+    # Additional Domain Join Logic for Domain Controller
     $domainType = Read-Host "Is this a New Domain or Existing Domain? (New/Existing)"
     
     if ($domainType -eq "New") {
