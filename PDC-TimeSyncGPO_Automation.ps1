@@ -87,7 +87,7 @@ try {
     Write-Log "OU path set to: $ouPath"
     
     # Create WMI Filter
-    Create-WmiFilter -FilterName $WmiFilterName -Description $WmiFilterDescription -Query $WmiFilterQuery
+    New-WmiFilter -FilterName $WmiFilterName -Description $WmiFilterDescription -Query $WmiFilterQuery
 
     # Create and Configure GPO
     Create-AndConfigure-GPO -GPOName $PDCeGPOName -NtpServer $TimeServers -OUPath $ouPath -WmiFilterName $WmiFilterName
