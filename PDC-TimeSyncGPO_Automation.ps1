@@ -23,6 +23,7 @@ function Write-Log {
     Add-Content -Path $logFile -Value "$(Get-Date) - $message"
 }
 
+# Function to create new WMI filter
 function New-PDCWmiFilter {
     param (
         [string]$FilterName,
@@ -33,13 +34,14 @@ function New-PDCWmiFilter {
             Import-Module -Name GroupPolicy -ErrorAction Stop
         }
 
-        $GPdomain = New-Object Microsoft.GroupPolicy.GPDomain
-        $WmiFilter = New-Object Microsoft.GroupPolicy.WmiFilter($FilterName, $GPdomain)
-        $WmiFilter.Description = $FilterDescription
-        $WmiFilter.AddQuery("root\CIMv2", "Select * from Win32_ComputerSystem where DomainRole = 5")
-        $WmiFilter.Save()
-
-        Write-Host "WMI Filter for PDC created successfully: $FilterName"
+        $existingFilter = Get-GPOWmiFilter -Name $FilterName -ErrorAction SilentlyContinue
+        if ($null -eq $existingFilter) {
+            Write-Log "Creating WMI Filter: $FilterName"
+            New-GPOWmiFilter -Name $FilterName -Description $FilterDescription -Query "Select * from Win32_ComputerSystem where DomainRole = 5" -Namespace "root\CIMv2"
+            Write-Log "WMI Filter created successfully: $FilterName"
+        } else {
+            Write-Log "WMI Filter already exists: $FilterName"
+        }
     } catch {
         Write-Error "Error creating WMI Filter for PDC: $_"
     }
