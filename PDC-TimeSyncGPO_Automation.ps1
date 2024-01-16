@@ -23,25 +23,25 @@ function Write-Log {
     Add-Content -Path $logFile -Value "$(Get-Date) - $message"
 }
 
-# Function to create WMI Filter
-function New-WmiFilter {
+function New-PDCWmiFilter {
     param (
         [string]$FilterName,
-        [string]$Description,
-        [string]$Query
+        [string]$FilterDescription = "WMI Filter for PDC"
     )
     try {
-        $existingFilter = Get-GPOWmiFilter -Name $FilterName -ErrorAction SilentlyContinue
-        if ($null -eq $existingFilter) {
-            Write-Log "Creating WMI Filter: $FilterName"
-            New-GPOWmiFilter -Name $FilterName -Description $Description -Query $Query -Namespace "root\CIMv2"
-            Write-Log "WMI Filter created successfully: $FilterName"
-        } else {
-            Write-Log "WMI Filter already exists: $FilterName"
+        if (-not (Get-Module -Name GroupPolicy)) {
+            Import-Module -Name GroupPolicy -ErrorAction Stop
         }
+
+        $GPdomain = New-Object Microsoft.GroupPolicy.GPDomain
+        $WmiFilter = New-Object Microsoft.GroupPolicy.WmiFilter($FilterName, $GPdomain)
+        $WmiFilter.Description = $FilterDescription
+        $WmiFilter.AddQuery("root\CIMv2", "Select * from Win32_ComputerSystem where DomainRole = 5")
+        $WmiFilter.Save()
+
+        Write-Host "WMI Filter for PDC created successfully: $FilterName"
     } catch {
-        Write-Log "Error creating WMI Filter: $_"
-        throw
+        Write-Error "Error creating WMI Filter for PDC: $_"
     }
 }
 
@@ -87,7 +87,7 @@ try {
     Write-Log "OU path set to: $ouPath"
     
     # Create WMI Filter
-    New-WmiFilter -FilterName $WmiFilterName -Description $WmiFilterDescription -Query $WmiFilterQuery
+    New-PDCWmiFilter -FilterName "PDC Filter"
 
     # Create and Configure GPO
     New-GPOConfiguration -GPOName $PDCeGPOName -NtpServer $TimeServers -OUPath $ouPath -WmiFilterName $WmiFilterName
