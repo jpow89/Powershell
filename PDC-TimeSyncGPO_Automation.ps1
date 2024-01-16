@@ -74,12 +74,18 @@ function Create-AndConfigure-GPO {
 
 # Main script execution
 try {
-    # Detect domain name and set OU path
-    $domain = (Get-ADDomain).DNSRoot
-    $ouPath = "OU=Domain Controllers,DC=" + ($domain -replace ".",",DC=")
-    Write-Log "Domain detected: $domain"
-    Write-Log "OU path set to: $ouPath"
+    # Import GroupPolicy module
+    Import-Module GroupPolicy
 
+    # Detect domain name
+    $domain = (Get-ADDomain).DNSRoot
+    Write-Log "Domain detected: $domain"
+
+    # Set OU path
+    $domainParts = $domain -split "\."
+    $ouPath = "OU=Domain Controllers" + ($domainParts | ForEach-Object { ",DC=$_" }) -join ""
+    Write-Log "OU path set to: $ouPath"
+    
     # Create WMI Filter
     Create-WmiFilter -FilterName $WmiFilterName -Description $WmiFilterDescription -Query $WmiFilterQuery
 
