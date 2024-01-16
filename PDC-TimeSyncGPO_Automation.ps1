@@ -121,8 +121,24 @@ function Write-Log {
     Add-Content -Path $logFile -Value "$(Get-Date) - $message"
 }
 
-# Function to create WMI Filter
-function New-WmiFilter {
+param (
+    [string]$FilterName,
+    [string]$Description,
+    [string]$Query
+)
+try {
+    $existingFilter = Get-GPOWmiFilter -Name $FilterName -ErrorAction SilentlyContinue
+    if ($null -eq $existingFilter) {
+        Write-Log "Creating WMI Filter: $FilterName"
+        New-WmiFilter -FilterName $FilterName -Description $Description -Query $Query
+        Write-Log "WMI Filter created successfully: $FilterName"
+    } else {
+        Write-Log "WMI Filter already exists: $FilterName"
+    }
+} catch {
+    Write-Log "Error creating WMI Filter: $_"
+    throw
+}
     param (
         [string]$FilterName,
         [string]$Description,
