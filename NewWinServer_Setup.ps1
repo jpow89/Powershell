@@ -28,9 +28,9 @@ function Handle-Error {
         [string] $FunctionName
     )
 	
-	$timestampedMessage = "[" + (Get-Date).ToString() + "] Error in $FunctionName: $ErrorMessage"
-    Write-Log "Error in $FunctionName: $ErrorMessage"
-    Write-Host "An error occurred in $FunctionName. Please check the log for details."
+    $timestampedMessage = "[" + (Get-Date).ToString() + "] Error in $FunctionName: $ErrorMessage"
+    Write-Log $timestampedMessage
+    Write-Host "An error occurred in $($FunctionName). Please check the log for details."
 }
 
 # Function to Backup Current Network Settings
