@@ -27,11 +27,31 @@ function Handle-Error {
         [Parameter(Mandatory=$true)]
         [string] $FunctionName
     )
-
+	
+	$timestampedMessage = "[" + (Get-Date).ToString() + "] Error in $FunctionName: $ErrorMessage"
     Write-Log "Error in $FunctionName: $ErrorMessage"
     Write-Host "An error occurred in $FunctionName. Please check the log for details."
 }
 
+# Function to Backup Current Network Settings
+function Backup-NetworkSettings {
+    $backupFile = Join-Path -Path "C:\Temp" -ChildPath "NetworkSettingsBackup.json"
+    $currentSettings = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq 'Ethernet' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object IPAddress, PrefixLength, InterfaceIndex
+    $currentSettings | ConvertTo-Json | Set-Content -Path $backupFile
+    Write-Log "Network settings backed up."
+}
+
+# Function to Restore Network Settings from Backup
+function Restore-NetworkSettings {
+    $backupFile = Join-Path -Path "C:\Temp" -ChildPath "NetworkSettingsBackup.json"
+    if (Test-Path $backupFile) {
+        $settings = Get-Content -Path $backupFile | ConvertFrom-Json
+        New-NetIPAddress -IPAddress $settings.IPAddress -PrefixLength $settings.PrefixLength -InterfaceIndex $settings.InterfaceIndex -Confirm:$false
+        Write-Log "Network settings restored from backup."
+    } else {
+        Write-Log "No network backup file found."
+    }
+}
 
 # Function to Validate IP Address
 # Validates the format of an IP address to ensure it's in the correct structure
@@ -61,6 +81,9 @@ function Set-NetworkConfiguration {
         [string]$Gateway,
         [string]$DNS
     )
+	try {
+        # Backup current network settings before making changes
+        Backup-NetworkSettings
     if (-not (Validate-IPAddress -IPAddress $IPAddress)) {
         Write-Log "Invalid IP Address format."
         return
@@ -72,9 +95,11 @@ function Set-NetworkConfiguration {
     try {
         New-NetIPAddress -IPAddress $IPAddress -PrefixLength $SubnetMask -DefaultGateway $Gateway
         Set-DnsClientServerAddress -ServerAddresses $DNS
-        Write-Host "Network configuration applied successfully."
+        Write-Log "Network configuration applied successfully."
     } catch {
-        Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Set-NetworkConfiguration"
+        # If something goes wrong, restore the original network settings
+		Restore-NetworkSettings
+		Handle-Error -ErrorMessage $_.Exception.Message -FunctionName "Set-NetworkConfiguration"
     }
 }
 
@@ -179,7 +204,7 @@ function Set-NTPSettings {
     }
 }
 
-# Function to Get and Configure Hostname
+# Function to Display current hostname.
 function Get-AndChangeHostname {
     $currentHostname = [System.Net.Dns]::GetHostName()
     $changeHostname = Read-Host "Current Hostname is: $currentHostname. Would you like to change it? (Yes/No)"
@@ -187,6 +212,10 @@ function Get-AndChangeHostname {
         $hostname = Read-Host "Enter New Hostname"
         Rename-Computer -NewName $hostname
         Write-Log "Hostname changed to $hostname"
+        $reboot = Read-Host "Do you want to reboot now? (Yes/No)"
+        if ($reboot -eq "Yes") {
+            Restart-Computer -Force
+        }
     } else {
         $hostname = $currentHostname
         Write-Log "Hostname remains as $currentHostname"
@@ -196,10 +225,11 @@ function Get-AndChangeHostname {
 # Function to Display Current Network Settings
 # Retrieves and displays the current network configuration of the server
 function Display-CurrentNetworkSettings {
-    $currentIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq 'Ethernet' -and $_.PrefixOrigin -ne 'WellKnown' }).IPAddress
-    $currentSubnetMask = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq 'Ethernet' -and $_.PrefixOrigin -ne 'WellKnown' }).PrefixLength
-    $currentGateway = (Get-NetRoute -AddressFamily IPv4 | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' -and $_.InterfaceAlias -eq 'Ethernet' }).NextHop
-    $currentDNS = (Get-DnsClientServerAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet' }).ServerAddresses -join ", "
+    $activeInterface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+    $currentIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq $activeInterface.Name -and $_.PrefixOrigin -ne 'WellKnown' }).IPAddress
+    $currentSubnetMask = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq $activeInterface.Name -and $_.PrefixOrigin -ne 'WellKnown' }).PrefixLength
+    $currentGateway = (Get-NetRoute -AddressFamily IPv4 | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' -and $_.InterfaceAlias -eq $activeInterface.Name }).NextHop
+    $currentDNS = (Get-DnsClientServerAddress | Where-Object { $_.InterfaceAlias -eq $activeInterface.Name }).ServerAddresses -join ", "
 
     Write-Host "Current Network Settings:"
     Write-Host "IP Address: $currentIP"
