@@ -85,9 +85,9 @@ try {
 
     # Set OU path
     $domainParts = $domain -split "\."
-    $ouPath = "OU=Domain Controllers" + ($domainParts | ForEach-Object { ",DC=$_" }) -join ""
+    $ouPath = "OU=Domain Controllers" + ($domainParts | ForEach-Object { ",DC=$($_.Trim())" }) -join ""
     Write-Log "OU path set to: $ouPath"
-    
+
     # Create WMI Filter
     New-PDCWmiFilter -FilterName "PDC Filter"
 
