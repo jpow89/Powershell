@@ -1,18 +1,31 @@
-# Function Definition for Remove-DnsRecords
 function Remove-DnsRecords {
     param(
-        [string]$domainName,
-        [string]$oldServerName
+        [string]$dnsServer,    # DNS server to query
+        [string]$oldServerName # The name of the server to remove
     )
 
-    Write-Host "Removing DNS records for $oldServerName..."
-    try {
-        Get-DnsServerResourceRecord -ZoneName $domainName | Where-Object { $_.HostName -eq $oldServerName } | Remove-DnsServerResourceRecord -ZoneName $domainName -Force
-        Write-Host "DNS records removal completed."
-    } catch {
-        Write-Host "An error occurred during DNS records removal: $_"
+    # Retrieve all DNS zones from the specified DNS server
+    $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
+
+    foreach ($zone in $dnsZones) {
+        Write-Host "Checking DNS records for $oldServerName in zone $($zone.ZoneName)..."
+        try {
+            $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer | 
+                       Where-Object { $_.RecordData -match $oldServerName -or $_.HostName -eq $oldServerName }
+
+            foreach ($record in $records) {
+                Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $record -Force -ComputerName $dnsServer
+                Write-Host "Removed record $($record.HostName) from zone $($zone.ZoneName)."
+            }
+        } catch {
+            Write-Host "An error occurred during DNS records removal in zone $($zone.ZoneName): $_"
+        }
     }
 }
+
+# Example usage
+$dnsServer = "YourDnsServerName" # Replace with your DNS server name
+$oldServerName = "OldServerName"  # Replace with the name of the server to remove
 
 # Function Definition for Check-GPOs
 function Check-GPOs {
@@ -104,7 +117,7 @@ $domainName = Read-Host "Please enter the domain name"
 $oldServerName = Read-Host "Please enter the old server name"
 
 # Call the functions
-Remove-DnsRecords -domainName $domainName -oldServerName $oldServerName
+Remove-DnsRecords -dnsServer $dnsServer -oldServerName $oldServerName
 Check-GPOs -oldServerName $oldServerName
 Start-NtdsutilCleanup
 Remove-ServerFromSitesAndServices -oldServerName $oldServerName -domainName $domainName
