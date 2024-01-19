@@ -1,103 +1,45 @@
-# PowerShell Script to Configure NTP Synchronization in Active Directory
+# Import GroupPolicy and ActiveDirectory modules
+Import-Module GroupPolicy
+Import-Module ActiveDirectory
 
-# Script variables
-$logFile = "C:\Logs\GPTimeSync\GPTimeSync.log"
-$TimeServers = "0.us.pool.ntp.org,0x8 1.us.pool.ntp.org,0x8 2.us.pool.ntp.org,0x8 3.us.pool.ntp.org,0x8"
-$PDCeGPOName = "PDC NTP Sync"
-$WmiFilterName = "PDC Emulator Filter"
-$WmiFilterDescription = "Filter for PDC Emulator"
-$WmiFilterQuery = "Select * from Win32_ComputerSystem where DomainRole = 5"
+# Create a new GPO
+$gpoName = "PDC NTP Sync"
+$gpo = New-GPO -Name $gpoName -Comment "GPO to configure NTP settings for PDC"
 
-# Ensures the log directory exists
-$logDir = Split-Path -Path $logFile -Parent
-if (-not (Test-Path -Path $logDir)) {
-    New-Item -Path $logDir -ItemType Directory
-    Write-Log "Created log directory: $logDir"
+# Define the NTP registry settings
+$ntpSettings = @{
+    "NtpServer"                = "0.us.pool.ntp.org,0x8 1.us.pool.ntp.org,0x8 2.us.pool.ntp.org,0x8 3.us.pool.ntp.org,0x8";
+    "Type"                     = "NTP";
+    "CrossSiteSyncFlags"       = "2";
+    "ResolvePeerBackoffMinutes"= "15";
+    "ResolvePeerBackoffMaxTimes"= "7";
+    "SpecialPollInterval"      = "3600";
+    "EventLogFlags"            = "0";
 }
 
-# Function definitions
-
-# Function to write logs
-function Write-Log {
-    Param ([string]$message)
-    Add-Content -Path $logFile -Value "$(Get-Date) - $message"
+# Configure the GPO with NTP settings
+foreach ($key in $ntpSettings.Keys) {
+    Set-GPRegistryValue -Name $gpoName -Key "HKLM\SYSTEM\CurrentControlSet\Services\W32Time\Parameters" -ValueName $key -Value $ntpSettings[$key] -Type String
 }
 
-# Function to create new WMI filter
-function New-PDCWmiFilter {
-    param (
-        [string]$FilterName,
-        [string]$FilterDescription = "WMI Filter for PDC"
-    )
-    try {
-        if (-not (Get-Module -Name GroupPolicy)) {
-            Import-Module -Name GroupPolicy -ErrorAction Stop
-        }
+# Enable Windows NTP Client and Server
+Set-GPRegistryValue -Name $gpoName -Key "HKLM\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpClient" -ValueName "Enabled" -Value 1 -Type DWORD
+Set-GPRegistryValue -Name $gpoName -Key "HKLM\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpServer" -ValueName "Enabled" -Value 1 -Type DWORD
 
-        $existingFilter = Get-GPOWmiFilter -Name $FilterName -ErrorAction SilentlyContinue
-        if ($null -eq $existingFilter) {
-            Write-Log "Creating WMI Filter: $FilterName"
-            New-GPOWmiFilter -Name $FilterName -Description $FilterDescription -Query "Select * from Win32_ComputerSystem where DomainRole = 5" -Namespace "root\CIMv2"
-            Write-Log "WMI Filter created successfully: $FilterName"
-        } else {
-            Write-Log "WMI Filter already exists: $FilterName"
-        }
-    } catch {
-        Write-Error "Error creating WMI Filter for PDC: $_"
-    }
-}
+# Get the domain name in DNS format
+$domainName = (Get-ADDomain).DNSRoot
 
-function New-GPOConfiguration {
-    param (
-        [string]$GPOName,
-        [string]$NtpServer,
-        [string]$OUPath,
-        [string]$WmiFilterName
-    )
-    try {
-        $gpo = Get-GPO -Name $GPOName -ErrorAction SilentlyContinue
-        if ($null -eq $gpo) {
-            Write-Log "Creating GPO: $GPOName"
-            $gpo = New-GPO -Name $GPOName
-            Set-GPRegistryValue -Name $GPOName -Key "HKLM\SYSTEM\CurrentControlSet\Services\W32Time\Parameters" -ValueName "NtpServer" -Type String -Value $NtpServer
-            Set-GPRegistryValue -Name $GPOName -Key "HKLM\SYSTEM\CurrentControlSet\Services\W32Time\Parameters" -ValueName "Type" -Type String -Value "NTP"
-            Set-GPLink -Name $GPOName -Target $OUPath -LinkEnabled Yes
-            $wmiFilter = Get-GPOWmiFilter -Name $WmiFilterName
-            Set-GPO -Name $GPOName -WmiFilter $wmiFilter
-            Write-Log "GPO created and configured successfully: $GPOName"
-        } else {
-            Write-Log "GPO already exists: $GPOName"
-        }
-    } catch {
-        Write-Log "Error creating or configuring GPO: $_"
-        throw
-    }
-}
+# Split the domain name into its components and format it for LDAP path
+$domainComponents = $domainName -split "\."
+$dcPath = ($domainComponents | ForEach-Object { "DC=$_" }) -join ','
 
-# Main script execution
+# Construct the distinguished name for the Domain Controllers OU
+$domainControllersOU = "OU=Domain Controllers,$dcPath"
+
+# Attempt to link the GPO to the Domain Controllers OU
 try {
-    # Import GroupPolicy module
-    Import-Module GroupPolicy
-
-    # Detect domain name
-    $domain = (Get-ADDomain).DNSRoot
-    Write-Log "Domain detected: $domain"
-
-    # Set OU path
-    $domainParts = $domain -split "\."
-    $ouPath = "OU=Domain Controllers" + ($domainParts | ForEach-Object { ",DC=$($_.Trim())" }) -join ""
-    Write-Log "OU path set to: $ouPath"
-
-    # Create WMI Filter
-    New-PDCWmiFilter -FilterName "PDC Filter"
-
-    # Create and Configure GPO
-    New-GPOConfiguration -GPOName $PDCeGPOName -NtpServer $TimeServers -OUPath $ouPath -WmiFilterName $WmiFilterName
-
-    Write-Log "Script execution completed successfully."
+    New-GPLink -Name $gpoName -Target $domainControllersOU
+    Write-Host "GPO '$gpoName' created and linked to the Domain Controllers OU successfully."
 } catch {
-    Write-Log "Error occurred in script execution: $_"
-    exit
+    Write-Host "Error linking GPO to the Domain Controllers OU: $_"
 }
-
-# End of Script
