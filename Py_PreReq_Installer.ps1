@@ -30,19 +30,26 @@ function InstallWinGet {
     }
 }
 
-# Install Python using winget
+# Check if Python is installed
 try {
-    winget install Python.Python --silent --accept-package-agreements --accept-source-agreements
-    Write-Host "Python installed successfully."
-
-    # Set Python environment path (adjust as needed)
-    $pythonPath = "C:\Python"
-    [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine) + ";$pythonPath", [EnvironmentVariableTarget]::Machine)
-    
-    # Install required Python packages
-    pip install numpy matplotlib sounddevice
-
-    Write-Host "Required Python packages installed successfully."
+    python --version
+    Write-Host "Python is already installed."
 } catch {
-    Write-Host "Error installing Python or Python packages."
-}
+    # Python is not installed, proceed with installation
+    Write-Host "Python not found. Attempting to install using winget..."
+
+    # Install Python using winget
+    try {
+        winget install Python.Python --silent --accept-package-agreements --accept-source-agreements
+        Write-Host "Python installed successfully."
+
+        # Set Python environment path (adjust as needed)
+        $pythonPath = "C:\Python"
+        [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine) + ";$pythonPath", [EnvironmentVariableTarget]::Machine)
+        
+        # Install required Python packages
+        pip install numpy matplotlib sounddevice
+
+        Write-Host "Required Python packages installed successfully."
+    } catch {
+        Write-Host "Error installing Python or Python packages."
