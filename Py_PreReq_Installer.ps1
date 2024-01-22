@@ -42,7 +42,7 @@ try {
 
     # Install Python using winget
     try {
-        winget install Python.Python --silent --accept-package-agreements --accept-source-agreements
+        winget install Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
         Write-Host "Python installed successfully."
 
         # Set Python environment path (adjust as needed)
