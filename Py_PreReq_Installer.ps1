@@ -35,6 +35,8 @@ try {
     python --version
     Write-Host "Python is already installed."
 } catch {
+    # Handle the catch block
+}
     # Python is not installed, proceed with installation
     Write-Host "Python not found. Attempting to install using winget..."
 
@@ -52,4 +54,6 @@ try {
 
         Write-Host "Required Python packages installed successfully."
     } catch {
+        Write-Host "Error installing Python or Python packages."
+    }
         Write-Host "Error installing Python or Python packages."
