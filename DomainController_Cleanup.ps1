@@ -51,35 +51,58 @@ function Remove-DnsRecords {
         [Parameter(Mandatory=$true)]
         [string]$oldServerName,
 
-        [string]$logPath = "C:\DNSCleanupLog.txt"
+        [string]$logPath
     )
 
-    if (-not (Resolve-DnsName $dnsServer -ErrorAction SilentlyContinue)) {
-        Add-Content -Path $logPath -Value "DNS Server $dnsServer not found. Exiting."
-        return
-    }
+    $zonesToCheck = @("DomainDnsZones", "ForestDnsZones", "_msdcs")
 
-    Add-Content -Path $logPath -Value "Starting DNS cleanup for $oldServerName on $dnsServer"
-
-    try {
-        $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
+    foreach ($zoneSuffix in $zonesToCheck) {
+        $dnsZones = Get-DnsServerZone -ComputerName $dnsServer | Where-Object { $_.ZoneName -like "*$zoneSuffix*" }
 
         foreach ($zone in $dnsZones) {
-            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName)..."
-            
-            $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer | 
-                       Where-Object { $_.RecordData -match $oldServerName -or $_.HostName -eq $oldServerName }
+            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName) for records related to $oldServerName..."
+            try {
+                $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer |
+                           Where-Object { $_.RecordData -match $oldServerName }
 
-            foreach ($record in $records) {
-                Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $record -Force -ComputerName $dnsServer
-                Add-Content -Path $logPath -Value "Removed record $($record.HostName) from zone $($zone.ZoneName)."
+                foreach ($record in $records) {
+                    Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $record -Force -ComputerName $dnsServer
+                    Add-Content -Path $logPath -Value "Removed record $($record.HostName) from zone $($zone.ZoneName)."
+                }
+            } catch {
+                Add-Content -Path $logPath -Value "Error while removing records from zone $($zone.ZoneName): $_"
             }
         }
-    } catch {
-        Add-Content -Path $logPath -Value "An error occurred during DNS records removal: $_"
     }
+}
 
-    Add-Content -Path $logPath -Value "DNS cleanup completed for $oldServerName on $dnsServer"
+# --- Check for and remove old domain controller from the Name Servers tab for each DNS Zone ---
+function Update-NameServers {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$dnsServer,
+
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [string]$logPath
+    )
+
+    $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
+
+    foreach ($zone in $dnsZones) {
+        try {
+            $nsRecords = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -RRType "NS" -ComputerName $dnsServer |
+                         Where-Object { $_.RecordData.NameServer -eq "$oldServerName.asch.local" }
+
+            foreach ($nsRecord in $nsRecords) {
+                Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $nsRecord -Force -ComputerName $dnsServer
+                Add-Content -Path $logPath -Value "Removed NS record for $oldServerName from zone $($zone.ZoneName)."
+            }
+        } catch {
+            Add-Content -Path $logPath -Value "Error while updating NS records in zone $($zone.ZoneName): $_"
+        }
+    }
 }
 
 # --- Check-GPOs Function ---
