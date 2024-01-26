@@ -51,29 +51,49 @@ function Remove-DnsRecords {
         [Parameter(Mandatory=$true)]
         [string]$oldServerName,
 
-        [string]$logPath
+        [string]$logPath = "C:\DNSCleanupLog.txt"
     )
 
-    $zonesToCheck = @("DomainDnsZones", "ForestDnsZones", "_msdcs")
+    if (-not (Resolve-DnsName $dnsServer -ErrorAction SilentlyContinue)) {
+        Add-Content -Path $logPath -Value "DNS Server $dnsServer not found. Exiting."
+        return
+    }
 
-    foreach ($zoneSuffix in $zonesToCheck) {
-        $dnsZones = Get-DnsServerZone -ComputerName $dnsServer | Where-Object { $_.ZoneName -like "*$zoneSuffix*" }
+    Add-Content -Path $logPath -Value "Starting DNS cleanup for $oldServerName on $dnsServer"
+
+    try {
+        $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
 
         foreach ($zone in $dnsZones) {
-            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName) for records related to $oldServerName..."
-            try {
-                $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer |
-                           Where-Object { $_.RecordData -match $oldServerName }
+            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName)..."
 
-                foreach ($record in $records) {
-                    Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $record -Force -ComputerName $dnsServer
-                    Add-Content -Path $logPath -Value "Removed record $($record.HostName) from zone $($zone.ZoneName)."
-                }
-            } catch {
-                Add-Content -Path $logPath -Value "Error while removing records from zone $($zone.ZoneName): $_"
+            # Retrieve all records from the zone
+            $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer
+
+            # Filter records related to the old server
+            $targetRecords = $records | Where-Object {
+                ($_.HostName -eq $oldServerName) -or
+                ($_.RecordData -match $oldServerName) -or
+                ($_.RecordType -eq 'SRV' -and $_.RecordData -match $oldServerName)
+            }
+
+            foreach ($record in $targetRecords) {
+                Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $record -Force -ComputerName $dnsServer
+                Add-Content -Path $logPath -Value "Removed record $($record.RecordType) $($record.HostName) from zone $($zone.ZoneName)."
+            }
+
+            # Check and update NS records
+            $nsRecords = $records | Where-Object { $_.RecordType -eq 'NS' -and $_.RecordData.NameServer -match $oldServerName }
+            foreach ($nsRecord in $nsRecords) {
+                Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $nsRecord -Force -ComputerName $dnsServer
+                Add-Content -Path $logPath -Value "Removed NS record pointing to $oldServerName from zone $($zone.ZoneName)."
             }
         }
+    } catch {
+        Add-Content -Path $logPath -Value "An error occurred during DNS records removal: $_"
     }
+
+    Add-Content -Path $logPath -Value "DNS cleanup completed for $oldServerName on $dnsServer"
 }
 
 # --- Check for and remove old domain controller from the Name Servers tab for each DNS Zone ---
