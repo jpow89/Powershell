@@ -258,19 +258,15 @@ function Check-DCinADUC {
         [string]$logPath = "C:\ADUCCleanupLog.txt"
     )
 
-    $domain = (Get-ADDomain).DNSRoot
-    $domainController = (Get-ADDomainController -Discover -NextClosestSite).HostName
-
-    Add-Content -Path $logPath -Value "Domain detected: $domain"
-    Add-Content -Path $logPath -Value "Using Domain Controller: $domainController"
+    Add-Content -Path $logPath -Value "Starting ADUC check for $oldServerName..."
 
     try {
-        $dcObject = Get-ADObject -Filter { ObjectClass -eq 'computer' -and Name -eq $oldServerName } -SearchBase "OU=Domain Controllers,DC=${domain -replace '\.',',DC='}"
+        $dcObject = Get-ADComputer -Identity $oldServerName -ErrorAction SilentlyContinue
 
         if ($dcObject) {
             Add-Content -Path $logPath -Value "$oldServerName is still listed in ADUC. Manual removal may be required."
         } else {
-            Add-Content -Path $logPath -Value "$oldServerName is not found in the Domain Controllers OU."
+            Add-Content -Path $logPath -Value "$oldServerName is not found in ADUC."
         }
     } catch {
         Add-Content -Path $logPath -Value "Error checking ADUC: $_"
