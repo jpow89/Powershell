@@ -65,6 +65,15 @@ function Remove-DnsRecords {
         $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
 
         foreach ($zone in $dnsZones) {
+            if ($zone.ZoneType -eq 'ReverseLookupZone') {
+                $ptrRecords = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer |
+                    Where-Object { $_.RecordType -eq 'PTR' -and $_.RecordData.PtrDomainName -eq $oldServerName }
+
+                foreach ($ptrRecord in $ptrRecords) {
+                    Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $ptrRecord -Force -ComputerName $dnsServer
+                    Add-Content -Path $logPath -Value "Removed PTR record $($ptrRecord.HostName) from reverse lookup zone $($zone.ZoneName)."
+    }
+}
             Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName)..."
 
             # Retrieve all records from the zone
@@ -96,7 +105,7 @@ function Remove-DnsRecords {
     Add-Content -Path $logPath -Value "DNS cleanup completed for $oldServerName on $dnsServer"
 }
 
-# --- Check for and remove old domain controller from the Name Servers tab for each DNS Zone ---
+<# --- Check for and remove old domain controller from the Name Servers tab for each DNS Zone ---
 function Update-NameServers {
     param(
         [Parameter(Mandatory=$true)]
@@ -124,6 +133,7 @@ function Update-NameServers {
         }
     }
 }
+#>
 
 # --- Check-GPOs Function ---
 function Check-GPOs {
