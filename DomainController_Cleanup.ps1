@@ -1,4 +1,46 @@
 # Function Definitions
+# --- Backup AD, DNS, GP ---
+function Backup-ADAndDNS {
+    param(
+        [string]$backupPath,
+        [string]$logPath = "C:\BackupLog.txt"
+    )
+
+    if (-not (Test-Path -Path $backupPath)) {
+        New-Item -ItemType Directory -Path $backupPath
+    }
+
+    try {
+        # Backup Active Directory
+        $adBackupPath = Join-Path -Path $backupPath -ChildPath "ADBackup"
+        if (-not (Test-Path -Path $adBackupPath)) {
+            New-Item -ItemType Directory -Path $adBackupPath
+        }
+        Add-Content -Path $logPath -Value "Backing up Active Directory..."
+        & wbadmin start systemstatebackup -backupTarget:$adBackupPath
+
+        # Backup DNS
+        $dnsBackupPath = Join-Path -Path $backupPath -ChildPath "DNSBackup"
+        if (-not (Test-Path -Path $dnsBackupPath)) {
+            New-Item -ItemType Directory -Path $dnsBackupPath
+        }
+        Add-Content -Path $logPath -Value "Backing up DNS..."
+        Get-DnsServerZone | Export-Clixml -Path (Join-Path -Path $dnsBackupPath -ChildPath "DNSZones.xml")
+
+        # Backup Group Policy Objects
+        $gpoBackupPath = Join-Path -Path $backupPath -ChildPath "GPOBackup"
+        if (-not (Test-Path -Path $gpoBackupPath)) {
+            New-Item -ItemType Directory -Path $gpoBackupPath
+        }
+        Add-Content -Path $logPath -Value "Backing up Group Policy Objects..."
+        Backup-Gpo -All -Path $gpoBackupPath
+
+        Add-Content -Path $logPath -Value "Backup completed successfully."
+    } catch {
+        Add-Content -Path $logPath -Value "An error occurred during backup: $_"
+        throw
+    }
+}
 
 # --- Remove-DnsRecords Function ---
 function Remove-DnsRecords {
@@ -40,7 +82,6 @@ function Remove-DnsRecords {
     Add-Content -Path $logPath -Value "DNS cleanup completed for $oldServerName on $dnsServer"
 }
 
-
 # --- Check-GPOs Function ---
 function Check-GPOs {
     param(
@@ -68,7 +109,6 @@ function Check-GPOs {
 
     Add-Content -Path $logPath -Value "GPO check completed for $oldServerName."
 }
-
 
 # --- Start-NtdsutilCleanup Function ---
 function Start-NtdsutilCleanup {
@@ -113,7 +153,6 @@ After completing these steps, close the Command Prompt.
     Add-Content -Path $logPath -Value "User instructed to follow manual steps and close the Command Prompt upon completion."
     Write-Host "Please check the log file at $logPath for a record of these instructions."
 }
-
 
 # --- Remove-ServerFromSitesAndServices Function ---
 function Remove-ServerFromSitesAndServices {
@@ -236,14 +275,28 @@ $dnsServer = Read-Host "Please enter the DNS server name"
 $domainName = Read-Host "Please enter the domain name (in DNS format like 'example.com')"
 $oldServerName = Read-Host "Please enter the old server name"
 
-# Define log file paths
-$dnsLogPath = "C:\DNSCleanupLog.txt"
-$gpoLogPath = "C:\DomainCleanupLog.txt"
-$ntdsutilLogPath = "C:\NTDSUtilLog.txt"
-$adCleanupLogPath = "C:\ADCleanupLog.txt"
-$aducLogPath = "C:\ADUCCleanupLog.txt"
-$fsmoLogPath = "C:\FSMORolesCheckLog.txt"
-$dnsDelegationLogPath = "C:\DNSDelegationLog.txt"
+# Define backup path
+$backupPath = "C:\DomainController_Cleanup\Backups"
+
+# Base directory for logs
+$logBasePath = "C:\DomainController_Cleanup"
+
+# Create the base directory if it doesn't exist
+if (-not (Test-Path -Path $logBasePath)) {
+    New-Item -ItemType Directory -Path $logBasePath
+}
+
+# Define log file paths using the base path
+$dnsLogPath = Join-Path -Path $logBasePath -ChildPath "DNSCleanupLog.txt"
+$gpoLogPath = Join-Path -Path $logBasePath -ChildPath "DomainCleanupLog.txt"
+$ntdsutilLogPath = Join-Path -Path $logBasePath -ChildPath "NTDSUtilLog.txt"
+$adCleanupLogPath = Join-Path -Path $logBasePath -ChildPath "ADCleanupLog.txt"
+$aducLogPath = Join-Path -Path $logBasePath -ChildPath "ADUCCleanupLog.txt"
+$fsmoLogPath = Join-Path -Path $logBasePath -ChildPath "FSMORolesCheckLog.txt"
+$dnsDelegationLogPath = Join-Path -Path $logBasePath -ChildPath "DNSDelegationLog.txt"
+
+# Backup function before main script execution
+Backup-ADAndDNS -backupPath $backupPath
 
 # Call the functions with the gathered information and log paths
 Remove-DnsRecords -dnsServer $dnsServer -oldServerName $oldServerName -logPath $dnsLogPath
