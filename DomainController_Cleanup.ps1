@@ -65,19 +65,20 @@ function Remove-DnsRecords {
         $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
 
         foreach ($zone in $dnsZones) {
+            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName)..."
+            
+            # Retrieve all records from the zone
+            $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer
+
+            # Handle PTR records in reverse lookup zones
             if ($zone.ZoneType -eq 'ReverseLookupZone') {
-                $ptrRecords = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer |
-                    Where-Object { $_.RecordType -eq 'PTR' -and $_.RecordData.PtrDomainName -eq $oldServerName }
+                $ptrRecords = $records | Where-Object { $_.RecordType -eq 'PTR' -and $_.RecordData.PtrDomainName -eq $oldServerName }
 
                 foreach ($ptrRecord in $ptrRecords) {
                     Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $ptrRecord -Force -ComputerName $dnsServer
                     Add-Content -Path $logPath -Value "Removed PTR record $($ptrRecord.HostName) from reverse lookup zone $($zone.ZoneName)."
-    }
-}
-            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName)..."
-
-            # Retrieve all records from the zone
-            $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer
+                }
+            }
 
             # Filter records related to the old server
             $targetRecords = $records | Where-Object {
