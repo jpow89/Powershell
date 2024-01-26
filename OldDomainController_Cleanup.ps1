@@ -1,125 +1,262 @@
+# Function Definitions
+
+# --- Remove-DnsRecords Function ---
 function Remove-DnsRecords {
     param(
-        [string]$dnsServer,    # DNS server to query
-        [string]$oldServerName # The name of the server to remove
+        [Parameter(Mandatory=$true)]
+        [string]$dnsServer,
+
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [string]$logPath = "C:\DNSCleanupLog.txt"
     )
 
-    # Retrieve all DNS zones from the specified DNS server
-    $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
+    if (-not (Resolve-DnsName $dnsServer -ErrorAction SilentlyContinue)) {
+        Add-Content -Path $logPath -Value "DNS Server $dnsServer not found. Exiting."
+        return
+    }
 
-    foreach ($zone in $dnsZones) {
-        Write-Host "Checking DNS records for $oldServerName in zone $($zone.ZoneName)..."
-        try {
+    Add-Content -Path $logPath -Value "Starting DNS cleanup for $oldServerName on $dnsServer"
+
+    try {
+        $dnsZones = Get-DnsServerZone -ComputerName $dnsServer
+
+        foreach ($zone in $dnsZones) {
+            Add-Content -Path $logPath -Value "Checking zone $($zone.ZoneName)..."
+            
             $records = Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ComputerName $dnsServer | 
                        Where-Object { $_.RecordData -match $oldServerName -or $_.HostName -eq $oldServerName }
 
             foreach ($record in $records) {
                 Remove-DnsServerResourceRecord -ZoneName $zone.ZoneName -InputObject $record -Force -ComputerName $dnsServer
-                Write-Host "Removed record $($record.HostName) from zone $($zone.ZoneName)."
+                Add-Content -Path $logPath -Value "Removed record $($record.HostName) from zone $($zone.ZoneName)."
             }
-        } catch {
-            Write-Host "An error occurred during DNS records removal in zone $($zone.ZoneName): $_"
-        }
-    }
-}
-
-# Example usage
-$dnsServer = "YourDnsServerName" # Replace with your DNS server name
-$oldServerName = "OldServerName"  # Replace with the name of the server to remove
-
-# Function Definition for Check-GPOs
-function Check-GPOs {
-    param([string]$oldServerName)
-
-    try {
-        Write-Host "Checking for Group Policy Objects linked to $oldServerName..."
-        $linkedGPOs = Get-GPO -All | Where-Object { $_.GPOStatus -ne 'AllSettingsDisabled' } | ForEach-Object { Get-GPPermissions -Guid $_.Id -TargetName $oldServerName -TargetType Computer -ErrorAction SilentlyContinue }
-        if ($linkedGPOs) {
-            Write-Host "Found linked GPOs: $($linkedGPOs.Name)"
-        } else {
-            Write-Host "No GPOs linked to $oldServerName found."
         }
     } catch {
-        Write-Host "An error occurred while checking for linked GPOs: $_"
+        Add-Content -Path $logPath -Value "An error occurred during DNS records removal: $_"
     }
+
+    Add-Content -Path $logPath -Value "DNS cleanup completed for $oldServerName on $dnsServer"
 }
 
-function Start-NtdsutilCleanup {
-    param([string]$oldServerName)
 
-    Write-Host "Please manually perform metadata cleanup using NTDSUTIL..."
-    $scriptBlock = {
-        cmd /c "ntdsutil"
-        # The commands below are just an example. They won't actually execute in ntdsutil.
-        # This is a placeholder to show where you would put any automated commands, if possible.
-        # Example: 'echo metadata cleanup' | ntdsutil
-        # Reminder for users to follow the manual steps provided in the PowerShell window.
-        Write-Host "Follow the NTDSUTIL instructions provided in the PowerShell window."
-        Write-Host "After completing the steps in the NTDSUTIL, close this window manually."
-    }
-    
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", $scriptBlock
-    
-    # Provide instructions for NTDSUTIL
-    Write-Host "NTDSUTIL Instructions:"
-    Write-Host "1. Type 'metadata cleanup' and press Enter."
-    Write-Host "2. Type 'connections' and press Enter."
-    Write-Host "3. Type 'connect to server <AnotherDCName>' (replace <AnotherDCName> with the name of a working DC) and press Enter."
-    Write-Host "4. Type 'quit' and press Enter."
-    Write-Host "5. Type 'select operation target' and press Enter."
-    Write-Host "6. Type 'list domains' and press Enter."
-    Write-Host "7. After the domains are listed, type 'select domain <number>' (replace <number> with the appropriate number for your domain) and press Enter."
-    Write-Host "8. Type 'list sites' and press Enter."
-    Write-Host "9. After the sites are listed, type 'select site <number>' (replace <number> with the appropriate number for your site) and press Enter."
-    Write-Host "10. Type 'list servers in site' and press Enter."
-    Write-Host "11. After the servers are listed, type 'select server <number>' (replace <number> with the number corresponding to $oldServerName) and press Enter."
-    Write-Host "12. Type 'quit' and press Enter."
-    Write-Host "13. Type 'remove selected server' and press Enter."
-    Write-Host "14. Follow the prompts to confirm and complete the removal."
-}
-
-function Remove-ServerFromSitesAndServices {
+# --- Check-GPOs Function ---
+function Check-GPOs {
     param(
+        [Parameter(Mandatory=$true)]
         [string]$oldServerName,
-        [string]$domainName  # Assuming this is in DNS format like 'example.com'
+
+        [string]$logPath = "C:\DomainCleanupLog.txt"
     )
 
+    Add-Content -Path $logPath -Value "Starting GPO checks for $oldServerName..."
+
     try {
-        # Convert the domain name to DN format for LDAP path
+        $gpos = Get-GPO -All -ErrorAction Stop
+        $linkedGPOs = $gpos | Where-Object { $_.GPOStatus -ne 'AllSettingsDisabled' } | 
+                      ForEach-Object { Get-GPPermissions -Guid $_.Id -TargetName $oldServerName -TargetType Computer -ErrorAction SilentlyContinue }
+
+        if ($linkedGPOs) {
+            $linkedGPOs | ForEach-Object { Add-Content -Path $logPath -Value "Linked GPO found: $($_.DisplayName)" }
+        } else {
+            Add-Content -Path $logPath -Value "No GPOs linked to $oldServerName found."
+        }
+    } catch {
+        Add-Content -Path $logPath -Value "Error occurred while checking GPOs: $_"
+    }
+
+    Add-Content -Path $logPath -Value "GPO check completed for $oldServerName."
+}
+
+
+# --- Start-NtdsutilCleanup Function ---
+function Start-NtdsutilCleanup {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [string]$logPath = "C:\NTDSUtilLog.txt"
+    )
+
+    Add-Content -Path $logPath -Value "Starting NTDSUTIL Cleanup process for $oldServerName..."
+
+    $instructions = @"
+Please follow these instructions for NTDSUTIL:
+
+1. Open a Command Prompt as Administrator.
+2. Type 'ntdsutil' and press Enter.
+3. Type 'metadata cleanup' and press Enter.
+4. Type 'connections' and press Enter.
+5. Type 'connect to server <AnotherDCName>' and press Enter.
+   Replace <AnotherDCName> with the name of a working DC.
+6. Type 'quit' and press Enter.
+7. Type 'select operation target' and press Enter.
+8. Type 'list domains' and press Enter.
+9. Type 'select domain <number>' and press Enter.
+   Replace <number> with the number for your domain.
+10. Type 'list sites' and press Enter.
+11. Type 'select site <number>' and press Enter.
+    Replace <number> with the number for your site.
+12. Type 'list servers in site' and press Enter.
+13. Type 'select server <number>' and press Enter.
+    Replace <number> with the number for $oldServerName.
+14. Type 'quit' and press Enter.
+15. Type 'remove selected server' and press Enter.
+16. Follow the prompts to confirm and complete the removal.
+
+After completing these steps, close the Command Prompt.
+"@
+
+    Write-Host $instructions
+    Add-Content -Path $logPath -Value "Provided NTDSUTIL instructions to the user."
+    Add-Content -Path $logPath -Value "User instructed to follow manual steps and close the Command Prompt upon completion."
+    Write-Host "Please check the log file at $logPath for a record of these instructions."
+}
+
+
+# --- Remove-ServerFromSitesAndServices Function ---
+function Remove-ServerFromSitesAndServices {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [Parameter(Mandatory=$true)]
+        [string]$domainName,
+
+        [string]$logPath = "C:\ADCleanupLog.txt"
+    )
+
+    Add-Content -Path $logPath -Value "Starting removal of $oldServerName from Sites and Services..."
+
+    try {
         $domainDN = "DC=" + ($domainName -replace "\.", ",DC=")
-
-        # Construct the search base for finding the server object in AD Sites and Services
         $searchBase = "CN=Sites,CN=Configuration,$domainDN"
-
-        # Find the server object in AD Sites and Services
         $serverObject = Get-ADObject -Filter { ObjectClass -eq 'server' -and Name -eq $oldServerName } -SearchBase $searchBase -Properties *
 
         if ($serverObject) {
-            # Confirm removal
-            $confirmation = Read-Host "Are you sure you want to remove $oldServerName from Sites and Services? (yes/no)"
+            $confirmation = Read-Host "Confirm removal of $oldServerName from Sites and Services (yes/no)"
+            Add-Content -Path $logPath -Value "User prompted for confirmation to remove $oldServerName."
+
             if ($confirmation -eq "yes") {
-                # Remove the server object
                 Remove-ADObject -Identity $serverObject.DistinguishedName -Recursive -Confirm:$false
+                Add-Content -Path $logPath -Value "$oldServerName removed from Sites and Services."
                 Write-Host "$oldServerName removed from Sites and Services."
             } else {
+                Add-Content -Path $logPath -Value "Operation cancelled by user."
                 Write-Host "Operation cancelled by user."
             }
         } else {
+            Add-Content -Path $logPath -Value "Server object for $oldServerName not found."
             Write-Host "Server object for $oldServerName not found."
         }
     } catch {
+        Add-Content -Path $logPath -Value "An error occurred: $_"
         Write-Host "An error occurred: $_"
     }
 }
 
-# Main script execution
-$domainName = Read-Host "Please enter the domain name"
+# Cleanup in Active Directory Users and Computers (ADUC)
+function Check-DCinADUC {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [string]$logPath = "C:\ADUCCleanupLog.txt"
+    )
+
+    $domain = (Get-ADDomain).DNSRoot
+    $domainController = (Get-ADDomainController -Discover -NextClosestSite).HostName
+
+    Add-Content -Path $logPath -Value "Domain detected: $domain"
+    Add-Content -Path $logPath -Value "Using Domain Controller: $domainController"
+
+    try {
+        $dcObject = Get-ADObject -Filter { ObjectClass -eq 'computer' -and Name -eq $oldServerName } -SearchBase "OU=Domain Controllers,DC=${domain -replace '\.',',DC='}"
+
+        if ($dcObject) {
+            Add-Content -Path $logPath -Value "$oldServerName is still listed in ADUC. Manual removal may be required."
+        } else {
+            Add-Content -Path $logPath -Value "$oldServerName is not found in the Domain Controllers OU."
+        }
+    } catch {
+        Add-Content -Path $logPath -Value "Error checking ADUC: $_"
+    }
+}
+
+# Checking FSMO Roles
+function Check-FSMORoles {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [string]$logPath = "C:\FSMORolesCheckLog.txt"
+    )
+
+    try {
+        $fsmoRoles = netdom query fsmo
+        if ($fsmoRoles -match $oldServerName) {
+            Add-Content -Path $logPath -Value "FSMO roles are still assigned to $oldServerName. Manual intervention required."
+        } else {
+            Add-Content -Path $logPath -Value "FSMO roles are not assigned to $oldServerName."
+        }
+    } catch {
+        Add-Content -Path $logPath -Value "Error checking FSMO roles: $_"
+    }
+}
+
+# Checking DNS Delegation
+function Check-DNSDelegation {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$oldServerName,
+
+        [string]$dnsServer,
+
+        [string]$logPath = "C:\DNSDelegationLog.txt"
+    )
+
+    try {
+        $nsRecords = Get-DnsServerResourceRecord -ZoneName $dnsServer -RRType NS | Where-Object { $_.RecordData.NameServer -eq $oldServerName }
+        
+        if ($nsRecords) {
+            Add-Content -Path $logPath -Value "DNS delegation for $oldServerName found. Review and update DNS delegation as necessary."
+        } else {
+            Add-Content -Path $logPath -Value "No DNS delegation for $oldServerName found."
+        }
+    } catch {
+        Add-Content -Path $logPath -Value "Error checking DNS delegation: $_"
+    }
+}
+
+# Main Script Execution
+
+# Gather required information from the user
+$dnsServer = Read-Host "Please enter the DNS server name"
+$domainName = Read-Host "Please enter the domain name (in DNS format like 'example.com')"
 $oldServerName = Read-Host "Please enter the old server name"
 
-# Call the functions
-Remove-DnsRecords -dnsServer $dnsServer -oldServerName $oldServerName
-Check-GPOs -oldServerName $oldServerName
-Start-NtdsutilCleanup
-Remove-ServerFromSitesAndServices -oldServerName $oldServerName -domainName $domainName
+# Define log file paths
+$dnsLogPath = "C:\DNSCleanupLog.txt"
+$gpoLogPath = "C:\DomainCleanupLog.txt"
+$ntdsutilLogPath = "C:\NTDSUtilLog.txt"
+$adCleanupLogPath = "C:\ADCleanupLog.txt"
+$aducLogPath = "C:\ADUCCleanupLog.txt"
+$fsmoLogPath = "C:\FSMORolesCheckLog.txt"
+$dnsDelegationLogPath = "C:\DNSDelegationLog.txt"
 
-Write-Host "Script execution completed. Please ensure to follow the manual steps for NTDSUTIL."
+# Call the functions with the gathered information and log paths
+Remove-DnsRecords -dnsServer $dnsServer -oldServerName $oldServerName -logPath $dnsLogPath
+Check-GPOs -oldServerName $oldServerName -logPath $gpoLogPath
+Start-NtdsutilCleanup -oldServerName $oldServerName -logPath $ntdsutilLogPath
+Remove-ServerFromSitesAndServices -oldServerName $oldServerName -domainName $domainName -logPath $adCleanupLogPath
+
+# New function calls
+Check-DCinADUC -oldServerName $oldServerName -logPath $aducLogPath
+Check-FSMORoles -oldServerName $oldServerName -logPath $fsmoLogPath
+Check-DNSDelegation -oldServerName $oldServerName -dnsServer $dnsServer -logPath $dnsDelegationLogPath
+
+Write-Host "Script execution completed. Please review the log files for details."
+
+
+
