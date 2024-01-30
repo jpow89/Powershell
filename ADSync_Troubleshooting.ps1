@@ -169,6 +169,31 @@ function Get-ADSyncLogs {
         [ValidateRange(1, 100)]
         [int]$numberOfLogs = 50
     )
+
+    try {
+        Write-Host "Retrieving ADSync logs..."
+        $logs = Get-WinEvent -FilterHashtable @{ LogName = $logName; Level = 1, 2, 3 } -MaxEvents $numberOfLogs
+
+        if ($logs) {
+            $formattedLogs = $logs | Format-Table -AutoSize | Out-String -Width 1024
+            Write-Host $formattedLogs
+
+            if ($outputPath) {
+                # Ensure the path is valid
+                if (-not (Test-Path $outputPath)) {
+                    New-Item -ItemType Directory -Force -Path $outputPath
+                }
+                $outputFile = Join-Path $outputPath "ADSyncLogs.csv"
+                $logs | Export-Csv -Path $outputFile -NoTypeInformation
+                Write-Host "Logs exported to $outputFile"
+            }
+        } else {
+            Write-Host "No recent ADSync logs found."
+        }
+    } catch {
+        Write-Host "Error retrieving ADSync logs: $_"
+        throw
+    }
 }
 
    # Present the menu to the user
